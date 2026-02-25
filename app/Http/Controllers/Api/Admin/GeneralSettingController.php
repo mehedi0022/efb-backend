@@ -15,11 +15,11 @@ class GeneralSettingController extends Controller
 {
     public function index(Request $request)
     {
-        $settings = GeneralSetting::orderByDesc('id')->get();
+        $setting = GeneralSetting::orderByDesc('id')->first();
 
         return response()->json([
             'success' => true,
-            'data' => $settings,
+            'data' => $setting ? [$setting] : [],
         ]);
     }
 

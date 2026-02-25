@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\Admin\ApiIntegrationController;
 use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
-use App\Http\Controllers\Api\Admin\BannerCategoryController;
 use App\Http\Controllers\Api\Admin\BannerController;
 use App\Http\Controllers\Api\Admin\BrandController;
 use App\Http\Controllers\Api\Admin\CategoryController;
@@ -264,14 +263,6 @@ Route::prefix('admin')->group(function () {
             Route::put('/{id}', [GoogleTagManagerController::class, 'update'])->middleware('admin.permission:tag-managers.edit');
             Route::post('/update-status', [GoogleTagManagerController::class, 'updateStatus'])->middleware('admin.permission:tag-managers.edit');
             Route::delete('/delete', [GoogleTagManagerController::class, 'destroy'])->middleware('admin.permission:tag-managers.delete');
-        });
-
-        Route::prefix('banner-categories')->group(function () {
-            Route::get('/', [BannerCategoryController::class, 'index'])->middleware('admin.permission:banner-categories.view');
-            Route::post('/', [BannerCategoryController::class, 'store'])->middleware('admin.permission:banner-categories.create');
-            Route::put('/{id}', [BannerCategoryController::class, 'update'])->middleware('admin.permission:banner-categories.edit');
-            Route::post('/update-status', [BannerCategoryController::class, 'updateStatus'])->middleware('admin.permission:banner-categories.edit');
-            Route::delete('/delete', [BannerCategoryController::class, 'destroy'])->middleware('admin.permission:banner-categories.delete');
         });
 
         Route::prefix('banners')->group(function () {

@@ -61,6 +61,8 @@ class CartService
     {
         $cart = Cart::findOrFail($cartId);
         $product = Product::findOrFail($productId);
+        $productName = trim((string) ($product->name ?? 'Product'));
+        $productImage = $this->resolveInternalProductImage($product);
         $normalizedOptions = $this->normalizeInternalOptions($options, $product);
         [$normalizedOptions, $resolvedPrice] = $this->validateVariantAndResolvePrice($product, $normalizedOptions);
 
@@ -80,12 +82,22 @@ class CartService
             $existingItem->increment('quantity', $qty);
             if ((float) $existingItem->price !== (float) $resolvedPrice) {
                 $existingItem->price = $resolvedPrice;
+            }
+            if (trim((string) ($existingItem->product_name ?? '')) === '' && $productName !== '') {
+                $existingItem->product_name = $productName;
+            }
+            if (trim((string) ($existingItem->product_image ?? '')) === '' && $productImage !== '') {
+                $existingItem->product_image = $productImage;
+            }
+            if ($existingItem->isDirty(['price', 'product_name', 'product_image'])) {
                 $existingItem->save();
             }
             $this->syncExistingItemOptions($existingItem, $normalizedOptions);
         } else {
             $cart->items()->create([
                 'product_id' => $productId,
+                'product_name' => $productName,
+                'product_image' => $productImage,
                 'quantity' => $qty,
                 'price' => $resolvedPrice,
                 'options' => $normalizedOptions,
@@ -450,5 +462,28 @@ class CartService
             $item->options = $updatedOptions;
             $item->save();
         }
+    }
+
+    private function resolveInternalProductImage(Product $product): string
+    {
+        $featureImage = $product->image()->value('image');
+        if (trim((string) $featureImage) !== '') {
+            return trim((string) $featureImage);
+        }
+
+        $candidates = [
+            $product->feature_image ?? null,
+            $product->thumbnail ?? null,
+            $product->image ?? null,
+        ];
+
+        foreach ($candidates as $value) {
+            $imagePath = trim((string) $value);
+            if ($imagePath !== '') {
+                return $imagePath;
+            }
+        }
+
+        return '';
     }
 }

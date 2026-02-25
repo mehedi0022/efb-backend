@@ -48,12 +48,10 @@ class BannerController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'category_id' => 'required|exists:banner_categories,id',
             'title' => 'required|string|max:255',
             'link' => 'required|string|max:500',
             'status' => 'required|boolean',
             'image' => 'required|file|image|max:5120',
-            'image_two' => 'nullable|file|image|max:5120',
         ]);
 
         $uploadPath = 'uploads/banner/';
@@ -66,20 +64,13 @@ class BannerController extends Controller
         $file->move($uploadPath, $name);
         $fileUrl = $uploadPath . $name;
 
-        $fileUrlOpt = '';
-        $fileOpt = $request->file('image_two');
-        if ($fileOpt) {
-            $nameOpt = time() . $fileOpt->getClientOriginalName();
-            $fileOpt->move($uploadPath, $nameOpt);
-            $fileUrlOpt = $uploadPath . $nameOpt;
-        }
-
         $data = $request->all();
+        $data['category_id'] = $this->resolveDefaultCategoryId();
         $data['title'] = trim((string) $request->input('title', ''));
         $data['link'] = trim((string) $request->input('link', ''));
         $data['status'] = $request->status ? 1 : 0;
         $data['image'] = $fileUrl;
-        $data['image_two'] = $fileUrlOpt;
+        $data['image_two'] = '';
 
         $banner = Banner::create($data);
 
@@ -89,16 +80,15 @@ class BannerController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'category_id' => 'required|exists:banner_categories,id',
             'title' => 'required|string|max:255',
             'link' => 'required|string|max:500',
             'status' => 'required|boolean',
             'image' => 'nullable|file|image|max:5120',
-            'image_two' => 'nullable|file|image|max:5120',
         ]);
 
         $banner = Banner::findOrFail($id);
         $data = $request->all();
+        $data['category_id'] = $banner->category_id ?: $this->resolveDefaultCategoryId();
         $data['title'] = trim((string) $request->input('title', ''));
         $data['link'] = trim((string) $request->input('link', ''));
 
@@ -118,21 +108,7 @@ class BannerController extends Controller
             $data['image'] = $banner->image;
         }
 
-        $fileOpt = $request->file('image_two');
-        if ($fileOpt) {
-            $uploadPathOpt = 'uploads/banner/';
-            if (!File::exists($uploadPathOpt)) {
-                File::makeDirectory($uploadPathOpt, 0755, true);
-            }
-            $nameOpt = time() . $fileOpt->getClientOriginalName();
-            $fileOpt->move($uploadPathOpt, $nameOpt);
-            $data['image_two'] = $uploadPathOpt . $nameOpt;
-            if ($banner->image_two) {
-                File::delete($banner->image_two);
-            }
-        } else {
-            $data['image_two'] = $banner->image_two;
-        }
+        $data['image_two'] = $banner->image_two;
 
         $data['status'] = $request->status ? 1 : 0;
 
@@ -171,5 +147,20 @@ class BannerController extends Controller
         }
 
         return response()->json(['success' => true]);
+    }
+
+    private function resolveDefaultCategoryId(): int
+    {
+        $existingCategoryId = BannerCategory::query()->value('id');
+        if ($existingCategoryId) {
+            return (int) $existingCategoryId;
+        }
+
+        $fallbackCategory = BannerCategory::create([
+            'name' => 'Default',
+            'status' => 1,
+        ]);
+
+        return (int) $fallbackCategory->id;
     }
 }

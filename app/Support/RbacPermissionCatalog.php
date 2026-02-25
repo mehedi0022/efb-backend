@@ -28,7 +28,6 @@ class RbacPermissionCatalog
             'integrations' => ['view', 'create', 'edit', 'delete'],
             'pixels' => ['view', 'create', 'edit', 'delete'],
             'tag-managers' => ['view', 'create', 'edit', 'delete'],
-            'banner-categories' => ['view', 'create', 'edit', 'delete'],
             'banners' => ['view', 'create', 'edit', 'delete'],
             'reports' => ['view', 'create', 'edit', 'delete'],
             'incomplete-orders' => ['view', 'create', 'edit', 'delete'],
