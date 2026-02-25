@@ -1,0 +1,5588 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Laravel Ecommerce API",
+        "version": "1.0.0",
+        "description": "Auto-generated OpenAPI spec from Laravel route definitions."
+    },
+    "servers": [
+        {
+            "url": "http://127.0.0.1:8000",
+            "description": "Local development"
+        },
+        {
+            "url": "https://ismatworld.com",
+            "description": "Configured APP_URL"
+        }
+    ],
+    "tags": [
+        {
+            "name": "Public Auth"
+        },
+        {
+            "name": "Public Products"
+        },
+        {
+            "name": "Public Content"
+        },
+        {
+            "name": "Public Cart"
+        },
+        {
+            "name": "Public Checkout"
+        },
+        {
+            "name": "Public External"
+        },
+        {
+            "name": "Admin Auth"
+        },
+        {
+            "name": "Admin Dashboard"
+        },
+        {
+            "name": "Admin Orders"
+        },
+        {
+            "name": "Admin Catalog"
+        },
+        {
+            "name": "Admin Reviews"
+        },
+        {
+            "name": "Admin Settings"
+        },
+        {
+            "name": "Admin Integrations"
+        },
+        {
+            "name": "Admin Marketing"
+        },
+        {
+            "name": "Admin Reports"
+        },
+        {
+            "name": "Admin Incomplete Orders"
+        },
+        {
+            "name": "Admin Users"
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "adminBearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Admin JWT access token"
+            },
+            "customerBearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Customer JWT access token"
+            }
+        }
+    },
+    "paths": {
+        "/api/admin/banner-categories": {
+            "get": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "GET /api/admin/banner-categories",
+                "operationId": "get_api_admin_banner_categories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/banner-categories",
+                "operationId": "post_api_admin_banner_categories",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banner-categories/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "DELETE /api/admin/banner-categories/delete",
+                "operationId": "delete_api_admin_banner_categories_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banner-categories/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/banner-categories/update-status",
+                "operationId": "post_api_admin_banner_categories_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banner-categories/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "PUT /api/admin/banner-categories/{id}",
+                "operationId": "put_api_admin_banner_categories_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banners": {
+            "get": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "GET /api/admin/banners",
+                "operationId": "get_api_admin_banners",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/banners",
+                "operationId": "post_api_admin_banners",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banners/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "DELETE /api/admin/banners/delete",
+                "operationId": "delete_api_admin_banners_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banners/meta": {
+            "get": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "GET /api/admin/banners/meta",
+                "operationId": "get_api_admin_banners_meta",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banners/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/banners/update-status",
+                "operationId": "post_api_admin_banners_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/banners/{id}": {
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/banners/{id}",
+                "operationId": "post_api_admin_banners_id",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/brands": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/brands",
+                "operationId": "get_api_admin_brands",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/brands",
+                "operationId": "post_api_admin_brands",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/brands/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/brands/delete",
+                "operationId": "delete_api_admin_brands_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/brands/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/brands/update-status",
+                "operationId": "post_api_admin_brands_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/brands/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/brands/{id}",
+                "operationId": "put_api_admin_brands_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/categories": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/categories",
+                "operationId": "get_api_admin_categories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/categories",
+                "operationId": "post_api_admin_categories",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/categories/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/categories/delete",
+                "operationId": "delete_api_admin_categories_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/categories/toggle-show-home": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/categories/toggle-show-home",
+                "operationId": "post_api_admin_categories_toggle_show_home",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/categories/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/categories/update-status",
+                "operationId": "post_api_admin_categories_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/categories/{id}": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/categories/{id}",
+                "operationId": "get_api_admin_categories_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/categories/{id}",
+                "operationId": "put_api_admin_categories_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/colors": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/colors",
+                "operationId": "get_api_admin_colors",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/colors",
+                "operationId": "post_api_admin_colors",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/colors/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/colors/delete",
+                "operationId": "delete_api_admin_colors_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/colors/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/colors/update-status",
+                "operationId": "post_api_admin_colors_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/colors/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/colors/{id}",
+                "operationId": "put_api_admin_colors_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/contacts": {
+            "get": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "GET /api/admin/contacts",
+                "operationId": "get_api_admin_contacts",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/contacts",
+                "operationId": "post_api_admin_contacts",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/contacts/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "DELETE /api/admin/contacts/delete",
+                "operationId": "delete_api_admin_contacts_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/contacts/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/contacts/update-status",
+                "operationId": "post_api_admin_contacts_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/contacts/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "PUT /api/admin/contacts/{id}",
+                "operationId": "put_api_admin_contacts_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/dashboard": {
+            "get": {
+                "tags": [
+                    "Admin Dashboard"
+                ],
+                "summary": "GET /api/admin/dashboard",
+                "operationId": "get_api_admin_dashboard",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders": {
+            "get": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "GET /api/admin/incomplete-orders",
+                "operationId": "get_api_admin_incomplete_orders",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "POST /api/admin/incomplete-orders",
+                "operationId": "post_api_admin_incomplete_orders",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders/meta": {
+            "get": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "GET /api/admin/incomplete-orders/meta",
+                "operationId": "get_api_admin_incomplete_orders_meta",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders/update-qty": {
+            "post": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "POST /api/admin/incomplete-orders/update-qty",
+                "operationId": "post_api_admin_incomplete_orders_update_qty",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders/update-shipping": {
+            "post": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "POST /api/admin/incomplete-orders/update-shipping",
+                "operationId": "post_api_admin_incomplete_orders_update_shipping",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders/{id}": {
+            "get": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "GET /api/admin/incomplete-orders/{id}",
+                "operationId": "get_api_admin_incomplete_orders_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "PUT /api/admin/incomplete-orders/{id}",
+                "operationId": "put_api_admin_incomplete_orders_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "DELETE /api/admin/incomplete-orders/{id}",
+                "operationId": "delete_api_admin_incomplete_orders_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/incomplete-orders/{id}/create-order": {
+            "post": {
+                "tags": [
+                    "Admin Incomplete Orders"
+                ],
+                "summary": "POST /api/admin/incomplete-orders/{id}/create-order",
+                "operationId": "post_api_admin_incomplete_orders_id_create_order",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/courier": {
+            "get": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "GET /api/admin/integrations/courier",
+                "operationId": "get_api_admin_integrations_courier",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/courier/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "PUT /api/admin/integrations/courier/{id}",
+                "operationId": "put_api_admin_integrations_courier_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/pathao-token": {
+            "post": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "POST /api/admin/integrations/pathao-token",
+                "operationId": "post_api_admin_integrations_pathao_token",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/payment": {
+            "get": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "GET /api/admin/integrations/payment",
+                "operationId": "get_api_admin_integrations_payment",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/payment/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "PUT /api/admin/integrations/payment/{id}",
+                "operationId": "put_api_admin_integrations_payment_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/sms": {
+            "get": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "GET /api/admin/integrations/sms",
+                "operationId": "get_api_admin_integrations_sms",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/integrations/sms/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Integrations"
+                ],
+                "summary": "PUT /api/admin/integrations/sms/{id}",
+                "operationId": "put_api_admin_integrations_sms_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/login": {
+            "post": {
+                "tags": [
+                    "Admin Auth"
+                ],
+                "summary": "POST /api/admin/login",
+                "operationId": "post_api_admin_login",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/admin/logout": {
+            "post": {
+                "tags": [
+                    "Admin Auth"
+                ],
+                "summary": "POST /api/admin/logout",
+                "operationId": "post_api_admin_logout",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/me": {
+            "get": {
+                "tags": [
+                    "Admin Auth"
+                ],
+                "summary": "GET /api/admin/me",
+                "operationId": "get_api_admin_me",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/order-statuses": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/order-statuses",
+                "operationId": "get_api_admin_order_statuses",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/order-statuses",
+                "operationId": "post_api_admin_order_statuses",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/order-statuses/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/order-statuses/delete",
+                "operationId": "delete_api_admin_order_statuses_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/order-statuses/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/order-statuses/update-status",
+                "operationId": "post_api_admin_order_statuses_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/order-statuses/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/order-statuses/{id}",
+                "operationId": "put_api_admin_order_statuses_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/assign-user": {
+            "post": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "POST /api/admin/orders/assign-user",
+                "operationId": "post_api_admin_orders_assign_user",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/courier/pathao": {
+            "post": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "POST /api/admin/orders/courier/pathao",
+                "operationId": "post_api_admin_orders_courier_pathao",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/courier/steadfast": {
+            "post": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "POST /api/admin/orders/courier/steadfast",
+                "operationId": "post_api_admin_orders_courier_steadfast",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "DELETE /api/admin/orders/delete",
+                "operationId": "delete_api_admin_orders_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/detail/{id}": {
+            "get": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "GET /api/admin/orders/detail/{id}",
+                "operationId": "get_api_admin_orders_detail_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/invoice/{invoiceId}": {
+            "get": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "GET /api/admin/orders/invoice/{invoiceId}",
+                "operationId": "get_api_admin_orders_invoice_invoiceid",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "invoiceId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: invoiceId"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/print": {
+            "post": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "POST /api/admin/orders/print",
+                "operationId": "post_api_admin_orders_print",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/statistics/all": {
+            "get": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "GET /api/admin/orders/statistics/all",
+                "operationId": "get_api_admin_orders_statistics_all",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "POST /api/admin/orders/update-status",
+                "operationId": "post_api_admin_orders_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/orders/{status}": {
+            "get": {
+                "tags": [
+                    "Admin Orders"
+                ],
+                "summary": "GET /api/admin/orders/{status}",
+                "operationId": "get_api_admin_orders_status",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: status"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pages": {
+            "get": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "GET /api/admin/pages",
+                "operationId": "get_api_admin_pages",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/pages",
+                "operationId": "post_api_admin_pages",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pages/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "DELETE /api/admin/pages/delete",
+                "operationId": "delete_api_admin_pages_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pages/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/pages/update-status",
+                "operationId": "post_api_admin_pages_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pages/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "PUT /api/admin/pages/{id}",
+                "operationId": "put_api_admin_pages_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pixels": {
+            "get": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "GET /api/admin/pixels",
+                "operationId": "get_api_admin_pixels",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/pixels",
+                "operationId": "post_api_admin_pixels",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pixels/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "DELETE /api/admin/pixels/delete",
+                "operationId": "delete_api_admin_pixels_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pixels/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/pixels/update-status",
+                "operationId": "post_api_admin_pixels_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/pixels/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "PUT /api/admin/pixels/{id}",
+                "operationId": "put_api_admin_pixels_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/products": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/products",
+                "operationId": "get_api_admin_products",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/products",
+                "operationId": "post_api_admin_products",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/products/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/products/delete",
+                "operationId": "delete_api_admin_products_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/products/filters": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/products/filters",
+                "operationId": "get_api_admin_products_filters",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/products/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/products/update-status",
+                "operationId": "post_api_admin_products_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/products/{id}": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/products/{id}",
+                "operationId": "get_api_admin_products_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/products/{id}",
+                "operationId": "put_api_admin_products_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/refresh-token": {
+            "post": {
+                "tags": [
+                    "Admin Auth"
+                ],
+                "summary": "POST /api/admin/refresh-token",
+                "operationId": "post_api_admin_refresh_token",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/admin/reports/orders": {
+            "get": {
+                "tags": [
+                    "Admin Reports"
+                ],
+                "summary": "GET /api/admin/reports/orders",
+                "operationId": "get_api_admin_reports_orders",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews": {
+            "get": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "GET /api/admin/reviews",
+                "operationId": "get_api_admin_reviews",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "POST /api/admin/reviews",
+                "operationId": "post_api_admin_reviews",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews/meta": {
+            "get": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "GET /api/admin/reviews/meta",
+                "operationId": "get_api_admin_reviews_meta",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews/pending": {
+            "get": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "GET /api/admin/reviews/pending",
+                "operationId": "get_api_admin_reviews_pending",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "PUT /api/admin/reviews/{id}",
+                "operationId": "put_api_admin_reviews_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "DELETE /api/admin/reviews/{id}",
+                "operationId": "delete_api_admin_reviews_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews/{id}/activate": {
+            "post": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "POST /api/admin/reviews/{id}/activate",
+                "operationId": "post_api_admin_reviews_id_activate",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/reviews/{id}/deactivate": {
+            "post": {
+                "tags": [
+                    "Admin Reviews"
+                ],
+                "summary": "POST /api/admin/reviews/{id}/deactivate",
+                "operationId": "post_api_admin_reviews_id_deactivate",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/settings": {
+            "get": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "GET /api/admin/settings",
+                "operationId": "get_api_admin_settings",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/settings",
+                "operationId": "post_api_admin_settings",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/settings/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "DELETE /api/admin/settings/delete",
+                "operationId": "delete_api_admin_settings_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/settings/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "POST /api/admin/settings/update-status",
+                "operationId": "post_api_admin_settings_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/settings/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Settings"
+                ],
+                "summary": "PUT /api/admin/settings/{id}",
+                "operationId": "put_api_admin_settings_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/shipping-charges": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/shipping-charges",
+                "operationId": "get_api_admin_shipping_charges",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/shipping-charges",
+                "operationId": "post_api_admin_shipping_charges",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/shipping-charges/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/shipping-charges/delete",
+                "operationId": "delete_api_admin_shipping_charges_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/shipping-charges/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/shipping-charges/update-status",
+                "operationId": "post_api_admin_shipping_charges_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/shipping-charges/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/shipping-charges/{id}",
+                "operationId": "put_api_admin_shipping_charges_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/sizes": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/sizes",
+                "operationId": "get_api_admin_sizes",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/sizes",
+                "operationId": "post_api_admin_sizes",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/sizes/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/sizes/delete",
+                "operationId": "delete_api_admin_sizes_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/sizes/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/sizes/update-status",
+                "operationId": "post_api_admin_sizes_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/sizes/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/sizes/{id}",
+                "operationId": "put_api_admin_sizes_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/subcategories": {
+            "get": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "GET /api/admin/subcategories",
+                "operationId": "get_api_admin_subcategories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/subcategories",
+                "operationId": "post_api_admin_subcategories",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/subcategories/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "DELETE /api/admin/subcategories/delete",
+                "operationId": "delete_api_admin_subcategories_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/subcategories/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "POST /api/admin/subcategories/update-status",
+                "operationId": "post_api_admin_subcategories_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/subcategories/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Catalog"
+                ],
+                "summary": "PUT /api/admin/subcategories/{id}",
+                "operationId": "put_api_admin_subcategories_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/tag-managers": {
+            "get": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "GET /api/admin/tag-managers",
+                "operationId": "get_api_admin_tag_managers",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/tag-managers",
+                "operationId": "post_api_admin_tag_managers",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/tag-managers/delete": {
+            "delete": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "DELETE /api/admin/tag-managers/delete",
+                "operationId": "delete_api_admin_tag_managers_delete",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/tag-managers/update-status": {
+            "post": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "POST /api/admin/tag-managers/update-status",
+                "operationId": "post_api_admin_tag_managers_update_status",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/tag-managers/{id}": {
+            "put": {
+                "tags": [
+                    "Admin Marketing"
+                ],
+                "summary": "PUT /api/admin/tag-managers/{id}",
+                "operationId": "put_api_admin_tag_managers_id",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: id"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/admin/users": {
+            "get": {
+                "tags": [
+                    "Admin Users"
+                ],
+                "summary": "GET /api/admin/users",
+                "operationId": "get_api_admin_users",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "adminBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/cart": {
+            "get": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "GET /api/v1/cart",
+                "operationId": "get_api_v1_cart",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "DELETE /api/v1/cart",
+                "operationId": "delete_api_v1_cart",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            }
+        },
+        "/api/v1/cart/add": {
+            "post": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "POST /api/v1/cart/add",
+                "operationId": "post_api_v1_cart_add",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            }
+        },
+        "/api/v1/cart/external/add": {
+            "post": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "POST /api/v1/cart/external/add",
+                "operationId": "post_api_v1_cart_external_add",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            }
+        },
+        "/api/v1/cart/items/{itemId}": {
+            "put": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "PUT /api/v1/cart/items/{itemId}",
+                "operationId": "put_api_v1_cart_items_itemid",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: itemId"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Public Cart"
+                ],
+                "summary": "DELETE /api/v1/cart/items/{itemId}",
+                "operationId": "delete_api_v1_cart_items_itemid",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: itemId"
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            }
+        },
+        "/api/v1/checkout": {
+            "post": {
+                "tags": [
+                    "Public Checkout"
+                ],
+                "summary": "POST /api/v1/checkout",
+                "operationId": "post_api_v1_checkout",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    },
+                    {}
+                ]
+            }
+        },
+        "/api/v1/external/category-products": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/category-products",
+                "operationId": "get_api_v1_external_category_products",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/external/category/{slug}": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/category/{slug}",
+                "operationId": "get_api_v1_external_category_slug",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: slug"
+                    }
+                ],
+                "security": []
+            }
+        },
+        "/api/v1/external/featured-categories": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/featured-categories",
+                "operationId": "get_api_v1_external_featured_categories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/external/hot-deals": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/hot-deals",
+                "operationId": "get_api_v1_external_hot_deals",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/external/menu-categories": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/menu-categories",
+                "operationId": "get_api_v1_external_menu_categories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/external/product/{slug}": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/product/{slug}",
+                "operationId": "get_api_v1_external_product_slug",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: slug"
+                    }
+                ],
+                "security": []
+            }
+        },
+        "/api/v1/external/search": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/search",
+                "operationId": "get_api_v1_external_search",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/external/top-sell": {
+            "get": {
+                "tags": [
+                    "Public External"
+                ],
+                "summary": "GET /api/v1/external/top-sell",
+                "operationId": "get_api_v1_external_top_sell",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/home-categories": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/home-categories",
+                "operationId": "get_api_v1_home_categories",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/home-data": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/home-data",
+                "operationId": "get_api_v1_home_data",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/login": {
+            "post": {
+                "tags": [
+                    "Public Auth"
+                ],
+                "summary": "POST /api/v1/login",
+                "operationId": "post_api_v1_login",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/logout": {
+            "post": {
+                "tags": [
+                    "Public Auth"
+                ],
+                "summary": "POST /api/v1/logout",
+                "operationId": "post_api_v1_logout",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/pages/{slug}": {
+            "get": {
+                "tags": [
+                    "Public Content"
+                ],
+                "summary": "GET /api/v1/pages/{slug}",
+                "operationId": "get_api_v1_pages_slug",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: slug"
+                    }
+                ],
+                "security": []
+            }
+        },
+        "/api/v1/products": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/products",
+                "operationId": "get_api_v1_products",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/products/hot-deals": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/products/hot-deals",
+                "operationId": "get_api_v1_products_hot_deals",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/products/latest": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/products/latest",
+                "operationId": "get_api_v1_products_latest",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/products/new-arrivals": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/products/new-arrivals",
+                "operationId": "get_api_v1_products_new_arrivals",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/products/{slug}": {
+            "get": {
+                "tags": [
+                    "Public Products"
+                ],
+                "summary": "GET /api/v1/products/{slug}",
+                "operationId": "get_api_v1_products_slug",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Path parameter: slug"
+                    }
+                ],
+                "security": []
+            }
+        },
+        "/api/v1/refresh-token": {
+            "post": {
+                "tags": [
+                    "Public Auth"
+                ],
+                "summary": "POST /api/v1/refresh-token",
+                "operationId": "post_api_v1_refresh_token",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/register": {
+            "post": {
+                "tags": [
+                    "Public Auth"
+                ],
+                "summary": "POST /api/v1/register",
+                "operationId": "post_api_v1_register",
+                "responses": {
+                    "201": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/settings": {
+            "get": {
+                "tags": [
+                    "Public Content"
+                ],
+                "summary": "GET /api/v1/settings",
+                "operationId": "get_api_v1_settings",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/shipping-charges": {
+            "get": {
+                "tags": [
+                    "Public Content"
+                ],
+                "summary": "GET /api/v1/shipping-charges",
+                "operationId": "get_api_v1_shipping_charges",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/site-data": {
+            "get": {
+                "tags": [
+                    "Public Content"
+                ],
+                "summary": "GET /api/v1/site-data",
+                "operationId": "get_api_v1_site_data",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/user": {
+            "get": {
+                "tags": [
+                    "Public Auth"
+                ],
+                "summary": "GET /api/v1/user",
+                "operationId": "get_api_v1_user",
+                "responses": {
+                    "200": {
+                        "description": "Successful response"
+                    },
+                    "422": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                },
+                "security": [
+                    {
+                        "customerBearer": []
+                    }
+                ]
+            }
+        }
+    }
+}

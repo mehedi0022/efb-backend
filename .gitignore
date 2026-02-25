@@ -1,0 +1,57 @@
+# Dependencies
+/vendor/
+/node_modules/
+
+# Environment files
+/.env
+/.env.*
+!/.env.example
+
+# Laravel runtime files
+/public/hot
+/public/storage
+/storage/*.key
+/storage/logs/*.log
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+!/storage/logs/.gitignore
+!/storage/framework/cache/.gitignore
+!/storage/framework/sessions/.gitignore
+!/storage/framework/testing/.gitignore
+!/storage/framework/views/.gitignore
+
+# Compiled service cache
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitignore
+
+# User uploads
+/public/uploads/*
+!/public/uploads/.gitignore
+
+# Local temp/debug files
+/last_errors.log
+/temp_log.txt
+
+# Test/cache artifacts
+/.phpunit.result.cache
+/.phpunit.cache
+
+# IDE/editor files
+/.idea/
+/.vscode/
+/.fleet/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# JS package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
