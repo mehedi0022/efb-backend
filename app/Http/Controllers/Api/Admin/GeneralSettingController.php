@@ -162,6 +162,7 @@ class GeneralSettingController extends Controller
     {
         return [
             'name' => 'nullable|string|max:55',
+            'browser_tab_title' => 'nullable|string|max:120',
             'copyright' => 'nullable|string|max:155',
             'logo' => [
                 'nullable',
@@ -187,6 +188,7 @@ class GeneralSettingController extends Controller
             'whatsapp' => 'nullable|string|max:50',
             'messenger' => 'nullable|string|max:255',
             'footer_payment_enabled' => 'nullable|in:0,1',
+            'default_courier' => 'nullable|in:pathao,steadfast',
         ];
     }
 
@@ -278,6 +280,7 @@ class GeneralSettingController extends Controller
         $columns = $this->tableColumns();
         $allowedFields = [
             'name',
+            'browser_tab_title',
             'copyright',
             'description',
             'header_bg_color',
@@ -290,6 +293,7 @@ class GeneralSettingController extends Controller
             'whatsapp',
             'messenger',
             'footer_payment_enabled',
+            'default_courier',
             'status',
         ];
 
@@ -302,6 +306,11 @@ class GeneralSettingController extends Controller
                 }
                 if ($field === 'footer_payment_enabled') {
                     $data[$field] = (int) $validated[$field] === 1 ? 1 : 0;
+                    continue;
+                }
+                if ($field === 'default_courier') {
+                    $value = strtolower(trim((string) $validated[$field]));
+                    $data[$field] = $value !== '' ? $value : null;
                     continue;
                 }
                 $data[$field] = $validated[$field];

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Order;
 use App\Models\OrderDetails;
 use App\Models\Customer;
+use App\Models\Courierapi;
 use App\Models\District;
 use App\Models\Product;
 use App\Models\OrderStatus;
@@ -17,8 +18,10 @@ use App\Models\User;
 use App\Services\ApiClient;
 use App\Services\OrderStatusService;
 use Carbon\Carbon;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -32,6 +35,11 @@ class OrderController extends Controller
      * @var array<int, string>
      */
     private array $dropshippingProductSkuCache = [];
+
+    private const PATHAO_DEFAULT_BASE_URL = 'https://api-hermes.pathao.com';
+    private const PATHAO_ISSUE_TOKEN_PATH = '/aladdin/api/v1/issue-token';
+    private const PATHAO_CREATE_ORDER_PATH = '/aladdin/api/v1/orders';
+    private const PATHAO_ORDER_STATUS_PATH = '/aladdin/api/v1/orders/%s';
 
     public function __construct(private readonly OrderStatusService $orderStatusService)
     {
@@ -130,6 +138,196 @@ class OrderController extends Controller
     }
 
     /**
+     * Courier-wise order list
+     */
+    public function courierOrders(Request $request)
+    {
+        $validated = $request->validate([
+            'courier' => 'nullable|string|in:pathao,steadfast',
+            'status' => 'nullable|string|max:60',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        if (!Schema::hasColumn('orders', 'courier_name')) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'pagination' => [
+                    'total' => 0,
+                    'per_page' => (int) ($validated['per_page'] ?? 20),
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'from' => null,
+                    'to' => null,
+                ],
+            ]);
+        }
+
+        try {
+            $query = Order::with([
+                'customer:id,name,phone,address',
+                'status:id,name,slug',
+                'shipping:id,order_id,name,phone,address,area,ip_address',
+                'user:id,name',
+                'orderdetails:id,order_id,image,product_name,qty,sale_price',
+            ])
+                ->whereNotNull('courier_name')
+                ->where('courier_name', '!=', '');
+
+            if (!empty($validated['courier'])) {
+                $query->where('courier_name', strtolower(trim((string) $validated['courier'])));
+            }
+
+            if (!empty($validated['status']) && Schema::hasColumn('orders', 'courier_status')) {
+                $query->whereRaw('LOWER(TRIM(courier_status)) = ?', [
+                    strtolower(trim((string) $validated['status'])),
+                ]);
+            }
+
+            $dateColumn = Schema::hasColumn('orders', 'courier_synced_at')
+                ? 'courier_synced_at'
+                : 'updated_at';
+
+            if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+                $query->whereBetween($dateColumn, [
+                    $validated['start_date'] . ' 00:00:00',
+                    $validated['end_date'] . ' 23:59:59',
+                ]);
+            } elseif (!empty($validated['start_date'])) {
+                $query->whereDate($dateColumn, '>=', $validated['start_date']);
+            } elseif (!empty($validated['end_date'])) {
+                $query->whereDate($dateColumn, '<=', $validated['end_date']);
+            }
+
+            $perPage = max(1, min((int) ($validated['per_page'] ?? 20), 100));
+            $orders = $query->latest($dateColumn)->latest('id')->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => $orders->map(fn ($order) => $this->formatOrder($order)),
+                'pagination' => [
+                    'total' => $orders->total(),
+                    'per_page' => $orders->perPage(),
+                    'current_page' => $orders->currentPage(),
+                    'last_page' => $orders->lastPage(),
+                    'from' => $orders->firstItem(),
+                    'to' => $orders->lastItem(),
+                ],
+            ]);
+        } catch (\Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching courier orders: ' . $exception->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Synchronize courier status for sent orders.
+     */
+    public function syncCourierStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'order_ids' => 'nullable|array|min:1',
+            'order_ids.*' => 'required|integer|exists:orders,id',
+        ]);
+
+        if (!Schema::hasColumn('orders', 'courier_name')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Courier tracking columns are missing. Please run migrations.',
+            ], 422);
+        }
+
+        $query = Order::query()
+            ->whereNotNull('courier_name')
+            ->where('courier_name', '!=', '');
+
+        if (!empty($validated['order_ids'])) {
+            $query->whereIn('id', $validated['order_ids']);
+        }
+
+        $orders = $query->get();
+        if ($orders->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'No courier orders found for synchronization.',
+                'synced_orders' => [],
+            ]);
+        }
+
+        $pathao = Courierapi::query()->where('type', 'pathao')->first();
+        $syncedOrders = [];
+        $failedOrders = [];
+
+        foreach ($orders as $order) {
+            $courierName = strtolower(trim((string) ($order->courier_name ?? '')));
+            if ($courierName === '') {
+                continue;
+            }
+
+            try {
+                $nextStatus = trim((string) ($order->courier_status ?? 'synced'));
+                $error = null;
+
+                if ($courierName === 'pathao' && $pathao) {
+                    $statusFromApi = $this->fetchPathaoStatus($order, $pathao);
+                    if ($statusFromApi !== null && $statusFromApi !== '') {
+                        $nextStatus = $statusFromApi;
+                    }
+                }
+
+                $this->recordCourierDispatch(
+                    $order,
+                    $courierName,
+                    $nextStatus !== '' ? $nextStatus : 'synced',
+                    trim((string) ($order->courier_order_id ?? '')) ?: null,
+                    $error
+                );
+
+                $syncedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'courier' => $courierName,
+                    'courier_status' => $nextStatus,
+                ];
+            } catch (\Throwable $exception) {
+                $error = trim((string) $exception->getMessage()) ?: 'Status sync failed.';
+                $this->recordCourierDispatch(
+                    $order,
+                    $courierName,
+                    'sync_failed',
+                    trim((string) ($order->courier_order_id ?? '')) ?: null,
+                    $error
+                );
+
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $error,
+                ];
+            }
+        }
+
+        if (!empty($failedOrders)) {
+            return response()->json([
+                'success' => false,
+                'message' => $failedOrders[0]['message'] ?? 'Some courier statuses could not be synchronized.',
+                'synced_orders' => $syncedOrders,
+                'failed_orders' => $failedOrders,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Courier statuses synchronized successfully.',
+            'synced_orders' => $syncedOrders,
+        ]);
+    }
+
+    /**
      * Get single order details
      */
     public function show($id)
@@ -214,7 +412,9 @@ class OrderController extends Controller
             'shipping_area' => 'nullable|string|max:100',
             'shipping_charge_id' => 'nullable|integer|exists:shipping_charges,id',
             'shipping_charge' => 'nullable|integer|min:0',
-            'discount' => 'nullable|integer|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            'discount_type' => 'nullable|string|in:fixed,percentage',
+            'discount_value' => 'nullable|numeric|min:0',
             'order_status' => 'nullable',
             'note' => 'nullable|string',
             'admin_note' => 'nullable|string',
@@ -257,7 +457,7 @@ class OrderController extends Controller
                 $shippingCharge = array_key_exists('shipping_charge', $validated)
                     ? max(0, (int) $validated['shipping_charge'])
                     : max(0, (int) ($shippingChargeRecord?->amount ?? 0));
-                $discount = max(0, (int) ($validated['discount'] ?? 0));
+                [$discountType, $discountValue] = $this->resolveDiscountInput($validated);
 
                 $shippingName = trim((string) $validated['shipping_name']);
                 $shippingPhone = trim((string) $validated['shipping_phone']);
@@ -305,7 +505,9 @@ class OrderController extends Controller
                 $order = Order::create([
                     'invoice_id' => $this->generateInvoiceId(),
                     'amount' => 0,
-                    'discount' => $discount,
+                    'discount' => 0,
+                    'discount_type' => $discountType,
+                    'discount_value' => $discountValue,
                     'shipping_charge' => $shippingCharge,
                     'customer_id' => (int) $customer->id,
                     'order_status' => (string) $resolvedStatusId,
@@ -334,7 +536,11 @@ class OrderController extends Controller
                 ]);
 
                 $subTotal = $this->calculateOrderSubTotal((int) $order->id);
-                $order->amount = max(0, $subTotal + $shippingCharge - $discount);
+                $discountAmount = $this->calculateDiscountAmount($subTotal, $discountType, $discountValue);
+                $order->discount = $discountAmount;
+                $order->discount_type = $discountType;
+                $order->discount_value = $discountValue;
+                $order->amount = max(0, $subTotal + $shippingCharge - $discountAmount);
                 $order->save();
 
                 Payment::create([
@@ -385,7 +591,9 @@ class OrderController extends Controller
             'shipping_area' => 'nullable|string|max:100',
             'shipping_charge_id' => 'nullable|integer|exists:shipping_charges,id',
             'shipping_charge' => 'nullable|integer|min:0',
-            'discount' => 'nullable|integer|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            'discount_type' => 'nullable|string|in:fixed,percentage',
+            'discount_value' => 'nullable|numeric|min:0',
             'order_status' => 'nullable',
             'note' => 'nullable|string',
             'admin_note' => 'nullable|string',
@@ -481,9 +689,6 @@ class OrderController extends Controller
             } elseif ($selectedShippingCharge) {
                 $order->shipping_charge = (int) $selectedShippingCharge->amount;
             }
-            if (array_key_exists('discount', $validated)) {
-                $order->discount = (int) $validated['discount'];
-            }
             if (array_key_exists('note', $validated)) {
                 $order->note = $validated['note'];
             }
@@ -492,6 +697,30 @@ class OrderController extends Controller
             }
 
             $subTotal = $this->calculateOrderSubTotal($order->id);
+            $existingDiscountType = strtolower(trim((string) ($order->discount_type ?? 'fixed')));
+            if (!in_array($existingDiscountType, ['fixed', 'percentage'], true)) {
+                $existingDiscountType = 'fixed';
+            }
+
+            $existingDiscountValue = (float) ($order->discount_value ?? $order->discount ?? 0);
+            $hasDiscountInput = array_key_exists('discount', $validated)
+                || array_key_exists('discount_value', $validated)
+                || array_key_exists('discount_type', $validated);
+            if ($hasDiscountInput) {
+                [$existingDiscountType, $existingDiscountValue] = $this->resolveDiscountInput(
+                    $validated,
+                    $existingDiscountType,
+                    $existingDiscountValue
+                );
+            }
+
+            $order->discount_type = $existingDiscountType;
+            $order->discount_value = $existingDiscountValue;
+            $order->discount = $this->calculateDiscountAmount(
+                $subTotal,
+                $existingDiscountType,
+                $existingDiscountValue
+            );
             $order->amount = max(
                 0,
                 $subTotal + (int) $order->shipping_charge - (int) $order->discount
@@ -630,6 +859,10 @@ class OrderController extends Controller
      */
     public function sendToSteadfast(Request $request)
     {
+        if (!Str::contains($request->path(), 'send-dropshipping')) {
+            return $this->dispatchToSteadfastCourier($request);
+        }
+
         $validated = $request->validate([
             'order_id' => 'nullable|integer|exists:orders,id',
             'order_ids' => 'nullable|array|min:1',
@@ -684,19 +917,23 @@ class OrderController extends Controller
             unset($payload['item_errors']);
 
             if (!empty($itemErrors)) {
+                $failedMessage = $itemErrors[0];
+                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
                 $failedOrders[] = [
                     'order_id' => (int) $order->id,
                     'invoice_id' => $order->invoice_id,
-                    'message' => $itemErrors[0],
+                    'message' => $failedMessage,
                 ];
                 continue;
             }
 
             if (empty($payload['items'])) {
+                $failedMessage = 'No order items found for this order.';
+                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
                 $failedOrders[] = [
                     'order_id' => (int) $order->id,
                     'invoice_id' => $order->invoice_id,
-                    'message' => 'No order items found for this order.',
+                    'message' => $failedMessage,
                 ];
                 continue;
             }
@@ -713,6 +950,7 @@ class OrderController extends Controller
                     'invoice_id' => $order->invoice_id,
                     'message' => $exception->getMessage(),
                 ]);
+                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
 
                 $failedOrders[] = [
                     'order_id' => (int) $order->id,
@@ -728,9 +966,19 @@ class OrderController extends Controller
                     $order->save();
                 }
 
+                $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
+                $this->recordCourierDispatch(
+                    $order,
+                    'steadfast',
+                    'sent',
+                    $courierOrderId,
+                    null
+                );
+
                 $sentOrders[] = [
                     'order_id' => (int) $order->id,
                     'invoice_id' => $order->invoice_id,
+                    'courier_order_id' => $courierOrderId,
                 ];
                 continue;
             }
@@ -739,6 +987,7 @@ class OrderController extends Controller
             if (!is_string($failedMessage) || trim($failedMessage) === '') {
                 $failedMessage = trim((string) $response->body()) ?: 'Dropshipping request failed.';
             }
+            $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
 
             $failedOrders[] = [
                 'order_id' => (int) $order->id,
@@ -768,17 +1017,127 @@ class OrderController extends Controller
     }
 
     /**
-     * Send orders to Pathao (stubbed)
+     * Send orders to Pathao.
      */
     public function sendToPathao(Request $request)
     {
-        $request->validate([
-            'order_ids' => 'required|array',
+        $validated = $request->validate([
+            'order_ids' => 'required|array|min:1',
+            'order_ids.*' => 'required|integer|exists:orders,id',
+            'refresh_token' => 'nullable|boolean',
         ]);
+
+        /** @var Courierapi|null $pathao */
+        $pathao = Courierapi::query()
+            ->where('type', 'pathao')
+            ->first();
+
+        if (!$pathao) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao configuration not found. Please configure Pathao first.',
+            ], 422);
+        }
+
+        if ((int) ($pathao->status ?? 0) !== 1) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao integration is inactive. Activate it from courier settings.',
+            ], 422);
+        }
+
+        $endpoint = $this->resolvePathaoCreateOrderEndpoint((string) ($pathao->url ?? ''));
+
+        try {
+            $pathaoToken = $this->resolvePathaoAccessToken($pathao, $request->boolean('refresh_token'));
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => collect($exception->errors())->flatten()->first() ?: 'Pathao token generation failed.',
+                'errors' => $exception->errors(),
+            ], 422);
+        }
+
+        $sentOrders = [];
+        $failedOrders = [];
+
+        foreach ($validated['order_ids'] as $orderId) {
+            $order = Order::with(['shipping', 'customer', 'orderdetails'])->find((int) $orderId);
+            if (!$order) {
+                $failedOrders[] = [
+                    'order_id' => (int) $orderId,
+                    'message' => 'Order not found.',
+                ];
+                continue;
+            }
+
+            $payload = $this->buildPathaoPayload($order);
+
+            try {
+                $response = $this->dispatchPathaoOrderRequest($endpoint, $pathaoToken, $payload);
+
+                if ($response->status() === 401) {
+                    $pathaoToken = $this->resolvePathaoAccessToken($pathao, true);
+                    $response = $this->dispatchPathaoOrderRequest($endpoint, $pathaoToken, $payload);
+                }
+            } catch (Throwable $exception) {
+                $failedMessage = trim((string) $exception->getMessage()) ?: 'Pathao request failed.';
+                $this->recordCourierDispatch($order, 'pathao', 'failed', null, $failedMessage);
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $failedMessage,
+                ];
+                continue;
+            }
+
+            if ($response->successful()) {
+                $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
+                $this->recordCourierDispatch(
+                    $order,
+                    'pathao',
+                    'sent',
+                    $courierOrderId,
+                    null
+                );
+
+                $sentOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'courier_order_id' => $courierOrderId,
+                ];
+                continue;
+            }
+
+            $failedMessage = $this->resolveCourierErrorMessage($response, 'Pathao order request failed.');
+            $this->recordCourierDispatch($order, 'pathao', 'failed', null, $failedMessage);
+            $failedOrders[] = [
+                'order_id' => (int) $order->id,
+                'invoice_id' => $order->invoice_id,
+                'message' => $failedMessage,
+            ];
+        }
+
+        if (!empty($failedOrders)) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => $failedOrders[0]['message'] ?? 'Failed to send order(s) to Pathao.',
+                'sent_orders' => $sentOrders,
+                'failed_orders' => $failedOrders,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Courier request queued',
+            'status' => 'success',
+            'message' => count($sentOrders) === 1
+                ? 'Order sent to Pathao successfully.'
+                : 'Orders sent to Pathao successfully.',
+            'sent_orders' => $sentOrders,
         ]);
     }
 
@@ -857,9 +1216,18 @@ class OrderController extends Controller
             'id' => $order->id,
             'invoice_id' => $order->invoice_id,
             'amount' => $order->amount,
+            'shipping_charge' => $order->shipping_charge ?? 0,
+            'discount' => $order->discount ?? 0,
+            'discount_type' => $order->discount_type ?? 'fixed',
+            'discount_value' => $order->discount_value ?? ($order->discount ?? 0),
             'ip_address' => $order->ip_address,
             'order_status' => $order->order_status,
             'status_name' => $this->getStatusName($order->order_status),
+            'courier_name' => $order->courier_name ?? null,
+            'courier_status' => $order->courier_status ?? null,
+            'courier_order_id' => $order->courier_order_id ?? null,
+            'courier_synced_at' => $order->courier_synced_at ?? null,
+            'courier_sync_error' => $order->courier_sync_error ?? null,
             'status' => $order->status ? [
                 'id' => $order->status->id,
                 'name' => $order->status->name,
@@ -1462,6 +1830,546 @@ class OrderController extends Controller
         return OrderDetails::query()
             ->where('order_id', $order->id)
             ->get();
+    }
+
+    /**
+     * @param array<string, mixed> $validated
+     * @return array{0:string,1:float}
+     */
+    private function resolveDiscountInput(
+        array $validated,
+        string $defaultType = 'fixed',
+        float $defaultValue = 0.0
+    ): array {
+        $discountType = strtolower(trim((string) ($validated['discount_type'] ?? $defaultType)));
+        if (!in_array($discountType, ['fixed', 'percentage'], true)) {
+            $discountType = 'fixed';
+        }
+
+        $rawValue = $defaultValue;
+        if (array_key_exists('discount_value', $validated)) {
+            $rawValue = (float) ($validated['discount_value'] ?? 0);
+        } elseif (array_key_exists('discount', $validated)) {
+            $rawValue = (float) ($validated['discount'] ?? 0);
+        }
+
+        $discountValue = max(0, $rawValue);
+        if ($discountType === 'percentage' && $discountValue > 100) {
+            throw ValidationException::withMessages([
+                'discount_value' => ['Percentage discount can not be greater than 100.'],
+            ]);
+        }
+
+        return [$discountType, round($discountValue, 2)];
+    }
+
+    private function calculateDiscountAmount(int $subTotal, string $discountType, float $discountValue): int
+    {
+        $normalizedType = strtolower(trim($discountType));
+        $safeSubTotal = max(0, $subTotal);
+        $safeDiscountValue = max(0, $discountValue);
+
+        if ($normalizedType === 'percentage') {
+            $discountPercentage = min(100, $safeDiscountValue);
+            return (int) round(($safeSubTotal * $discountPercentage) / 100);
+        }
+
+        return (int) round(min($safeSubTotal, $safeDiscountValue));
+    }
+
+    private function recordCourierDispatch(
+        Order $order,
+        string $courierName,
+        string $courierStatus,
+        ?string $courierOrderId = null,
+        ?string $error = null
+    ): void {
+        $updates = [];
+
+        if (Schema::hasColumn('orders', 'courier_name')) {
+            $updates['courier_name'] = trim(strtolower($courierName));
+        }
+        if (Schema::hasColumn('orders', 'courier_status')) {
+            $updates['courier_status'] = trim(strtolower($courierStatus));
+        }
+        if (Schema::hasColumn('orders', 'courier_order_id')) {
+            $updates['courier_order_id'] = $courierOrderId !== null && trim($courierOrderId) !== ''
+                ? trim($courierOrderId)
+                : null;
+        }
+        if (Schema::hasColumn('orders', 'courier_synced_at')) {
+            $updates['courier_synced_at'] = now();
+        }
+        if (Schema::hasColumn('orders', 'courier_sync_error')) {
+            $updates['courier_sync_error'] = $error !== null && trim($error) !== ''
+                ? trim($error)
+                : null;
+        }
+
+        if (empty($updates)) {
+            return;
+        }
+
+        Order::query()->whereKey($order->id)->update($updates);
+        foreach ($updates as $key => $value) {
+            $order->{$key} = $value;
+        }
+    }
+
+    private function dispatchToSteadfastCourier(Request $request)
+    {
+        $validated = $request->validate([
+            'order_id' => 'nullable|integer|exists:orders,id',
+            'order_ids' => 'nullable|array|min:1',
+            'order_ids.*' => 'required|integer|exists:orders,id',
+        ]);
+
+        $orderIds = collect($validated['order_ids'] ?? [])
+            ->when(isset($validated['order_id']), fn ($collection) => $collection->push($validated['order_id']))
+            ->filter(fn ($id) => is_numeric($id) && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($orderIds)) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'No valid order selected.',
+            ], 422);
+        }
+
+        $steadfast = Courierapi::query()->where('type', 'steadfast')->first();
+        if (!$steadfast) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Steadfast configuration not found. Please configure courier settings first.',
+            ], 422);
+        }
+
+        if ((int) ($steadfast->status ?? 0) !== 1) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Steadfast integration is inactive. Please activate it in courier settings.',
+            ], 422);
+        }
+
+        $endpoint = trim((string) ($steadfast->url ?? ''));
+        if ($endpoint === '') {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Steadfast endpoint URL is missing in courier settings.',
+            ], 422);
+        }
+
+        $token = trim((string) ($steadfast->token ?? $steadfast->api_key ?? ''));
+
+        $sentOrders = [];
+        $failedOrders = [];
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::with(['shipping', 'customer', 'orderdetails'])->find($orderId);
+            if (!$order) {
+                $failedOrders[] = [
+                    'order_id' => $orderId,
+                    'message' => 'Order not found.',
+                ];
+                continue;
+            }
+
+            $payload = $this->buildSteadfastPayload($order);
+
+            try {
+                $requestBuilder = Http::acceptJson()->asJson();
+                if ($token !== '') {
+                    $requestBuilder = $requestBuilder->withToken($token);
+                }
+
+                $response = $requestBuilder->post($endpoint, $payload);
+            } catch (Throwable $exception) {
+                $failedMessage = trim((string) $exception->getMessage()) ?: 'Steadfast request failed.';
+                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
+
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $failedMessage,
+                ];
+                continue;
+            }
+
+            if ($response->successful()) {
+                $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
+                $this->recordCourierDispatch(
+                    $order,
+                    'steadfast',
+                    'sent',
+                    $courierOrderId,
+                    null
+                );
+
+                $sentOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'courier_order_id' => $courierOrderId,
+                ];
+                continue;
+            }
+
+            $failedMessage = $this->resolveCourierErrorMessage($response, 'Steadfast request failed.');
+            $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
+
+            $failedOrders[] = [
+                'order_id' => (int) $order->id,
+                'invoice_id' => $order->invoice_id,
+                'message' => $failedMessage,
+            ];
+        }
+
+        if (!empty($failedOrders)) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => $failedOrders[0]['message'] ?? 'Failed to send order(s) to Steadfast.',
+                'sent_orders' => $sentOrders,
+                'failed_orders' => $failedOrders,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'status' => 'success',
+            'message' => count($sentOrders) === 1
+                ? 'Order sent to Steadfast successfully.'
+                : 'Orders sent to Steadfast successfully.',
+            'sent_orders' => $sentOrders,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSteadfastPayload(Order $order): array
+    {
+        $shipping = $order->shipping;
+        $customer = $order->customer;
+
+        $recipientName = trim((string) ($shipping?->name ?? $customer?->name ?? ''));
+        $recipientPhone = trim((string) ($shipping?->phone ?? $customer?->phone ?? ''));
+        $recipientAddress = trim((string) ($shipping?->address ?? $customer?->address ?? ''));
+        $deliveryArea = trim((string) ($shipping?->area ?? ''));
+
+        $items = $order->orderdetails->map(function ($detail) {
+            return [
+                'name' => (string) ($detail->product_name ?? 'Item'),
+                'quantity' => max(1, (int) ($detail->qty ?? 1)),
+                'price' => max(0, (float) ($detail->sale_price ?? 0)),
+            ];
+        })->values()->all();
+
+        $itemSummary = collect($items)
+            ->pluck('name')
+            ->filter()
+            ->take(3)
+            ->implode(', ');
+
+        return [
+            'invoice' => (string) $order->invoice_id,
+            'recipient_name' => $recipientName !== '' ? $recipientName : 'Customer',
+            'recipient_phone' => $recipientPhone !== '' ? $recipientPhone : '00000000000',
+            'recipient_address' => $recipientAddress !== '' ? $recipientAddress : 'Address not provided',
+            'delivery_area' => $deliveryArea,
+            'cod_amount' => max(0, (float) ($order->amount ?? 0)),
+            'note' => trim((string) ($order->note ?? '')),
+            'item_description' => $itemSummary !== '' ? $itemSummary : 'Parcel',
+            'total_quantity' => collect($items)->sum('quantity'),
+            'items' => $items,
+        ];
+    }
+
+    private function resolvePathaoCreateOrderEndpoint(string $configuredUrl = ''): string
+    {
+        $candidate = trim($configuredUrl);
+        if ($candidate === '') {
+            return self::PATHAO_DEFAULT_BASE_URL . self::PATHAO_CREATE_ORDER_PATH;
+        }
+
+        if (preg_match('/\/aladdin\/api\/v1\/issue-token\/?$/i', $candidate)) {
+            $candidate = preg_replace('/\/issue-token\/?$/i', '', $candidate) ?: $candidate;
+            return rtrim($candidate, '/') . '/orders';
+        }
+
+        if (preg_match('/\/aladdin\/api\/v1\/orders\/?$/i', $candidate) || preg_match('/\/orders\/?$/i', $candidate)) {
+            return rtrim($candidate, '/');
+        }
+
+        return rtrim($candidate, '/') . self::PATHAO_CREATE_ORDER_PATH;
+    }
+
+    private function resolvePathaoTokenEndpoint(string $configuredUrl = ''): string
+    {
+        $candidate = trim($configuredUrl);
+        if ($candidate === '') {
+            return self::PATHAO_DEFAULT_BASE_URL . self::PATHAO_ISSUE_TOKEN_PATH;
+        }
+
+        if (preg_match('/\/issue-token\/?$/i', $candidate)) {
+            return rtrim($candidate, '/');
+        }
+
+        if (preg_match('/\/aladdin\/api\/v1\/orders\/?$/i', $candidate)) {
+            $candidate = preg_replace('/\/orders\/?$/i', '', $candidate) ?: $candidate;
+        } elseif (preg_match('/\/orders\/?$/i', $candidate)) {
+            $candidate = preg_replace('/\/orders\/?$/i', '', $candidate) ?: $candidate;
+        }
+
+        return rtrim($candidate, '/') . self::PATHAO_ISSUE_TOKEN_PATH;
+    }
+
+    private function resolvePathaoAccessToken(Courierapi $pathao, bool $forceRefresh = false): string
+    {
+        $existingToken = trim((string) ($pathao->token ?? ''));
+        if (!$forceRefresh && $existingToken !== '' && !$pathao->tokenExpired()) {
+            return $existingToken;
+        }
+
+        $clientId = trim((string) ($pathao->client_id ?? ''));
+        $clientSecret = trim((string) ($pathao->client_secret ?? ''));
+        $username = trim((string) ($pathao->username ?? ''));
+        $password = trim((string) ($pathao->password ?? ''));
+
+        if ($clientId === '' || $clientSecret === '' || $username === '' || $password === '') {
+            throw ValidationException::withMessages([
+                'pathao' => ['Pathao credentials are incomplete. Configure client ID, client secret, username and password.'],
+            ]);
+        }
+
+        $tokenResponse = $this->requestPathaoToken(
+            $clientId,
+            $clientSecret,
+            $username,
+            $password,
+            trim((string) ($pathao->url ?? ''))
+        );
+
+        $pathao->token = $tokenResponse['token'];
+        $pathao->token_expires_at = $tokenResponse['expires_at'];
+        $pathao->save();
+
+        return trim((string) ($pathao->token ?? ''));
+    }
+
+    /**
+     * @return array{token:string,expires_at:\Illuminate\Support\Carbon}
+     */
+    private function requestPathaoToken(
+        string $clientId,
+        string $clientSecret,
+        string $username,
+        string $password,
+        string $configuredUrl = ''
+    ): array {
+        $endpoint = $this->resolvePathaoTokenEndpoint($configuredUrl);
+        $response = Http::acceptJson()
+            ->asJson()
+            ->post($endpoint, [
+                'client_id' => $clientId,
+                'client_secret' => $clientSecret,
+                'grant_type' => 'password',
+                'username' => $username,
+                'password' => $password,
+            ]);
+
+        if (!$response->successful()) {
+            $message = $this->resolveCourierErrorMessage($response, 'Pathao token request failed.');
+            throw ValidationException::withMessages([
+                'pathao' => [$message],
+            ]);
+        }
+
+        $token = trim((string) $response->json('access_token', ''));
+        if ($token === '') {
+            throw ValidationException::withMessages([
+                'pathao' => ['Pathao token response did not include an access token.'],
+            ]);
+        }
+
+        $expiresIn = (int) $response->json('expires_in', 0);
+        $expiresAt = $expiresIn > 0
+            ? now()->addSeconds(max(60, $expiresIn))
+            : now()->addHours(6);
+
+        return [
+            'token' => $token,
+            'expires_at' => $expiresAt,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function dispatchPathaoOrderRequest(string $endpoint, string $token, array $payload): Response
+    {
+        return Http::acceptJson()
+            ->asJson()
+            ->withToken($token)
+            ->post($endpoint, $payload);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildPathaoPayload(Order $order): array
+    {
+        $shipping = $order->shipping;
+        $customer = $order->customer;
+
+        $customerName = trim((string) ($shipping?->name ?? $customer?->name ?? ''));
+        $customerPhone = trim((string) ($shipping?->phone ?? $customer?->phone ?? ''));
+        $customerAddress = trim((string) ($shipping?->address ?? $customer?->address ?? ''));
+        $customerArea = trim((string) ($shipping?->area ?? ''));
+
+        $itemQuantity = max(1, (int) $order->orderdetails->sum(fn ($item) => max(0, (int) ($item->qty ?? 0))));
+        $itemDescription = trim((string) $order->orderdetails
+            ->pluck('product_name')
+            ->filter()
+            ->take(3)
+            ->join(', '));
+
+        return [
+            'merchant_order_id' => (string) $order->invoice_id,
+            'recipient_name' => $customerName !== '' ? $customerName : 'Customer',
+            'recipient_phone' => $customerPhone !== '' ? $customerPhone : '00000000000',
+            'recipient_address' => $customerAddress !== '' ? $customerAddress : 'Address not provided',
+            'recipient_city' => $customerArea !== '' ? $customerArea : 'Dhaka',
+            'recipient_zone' => $customerArea !== '' ? $customerArea : 'Unknown',
+            'delivery_type' => 48,
+            'item_type' => 2,
+            'special_instruction' => trim((string) ($order->note ?? '')),
+            'item_quantity' => $itemQuantity,
+            'item_weight' => max(0.2, round($itemQuantity * 0.2, 2)),
+            'item_description' => $itemDescription !== '' ? $itemDescription : 'Parcel',
+            'amount_to_collect' => max(0, (float) ($order->amount ?? 0)),
+        ];
+    }
+
+    private function extractCourierOrderIdFromResponse(Response $response): ?string
+    {
+        $body = $response->json();
+        $candidates = [
+            data_get($body, 'data.consignment_id'),
+            data_get($body, 'data.invoice_no'),
+            data_get($body, 'data.invoice'),
+            data_get($body, 'data.order_id'),
+            data_get($body, 'data.id'),
+            data_get($body, 'consignment_id'),
+            data_get($body, 'invoice_no'),
+            data_get($body, 'order_id'),
+            data_get($body, 'id'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            $normalized = trim((string) $candidate);
+            if ($normalized !== '') {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveCourierErrorMessage(Response $response, string $fallback): string
+    {
+        $message = $response->json('message');
+        if (is_string($message) && trim($message) !== '') {
+            return trim($message);
+        }
+
+        $errors = $response->json('errors');
+        if (is_array($errors) && !empty($errors)) {
+            $flattened = collect($errors)
+                ->flatten()
+                ->map(fn ($item) => trim((string) $item))
+                ->filter()
+                ->values()
+                ->all();
+
+            if (!empty($flattened)) {
+                return implode(' ', $flattened);
+            }
+        }
+
+        $rawBody = trim((string) $response->body());
+        if ($rawBody !== '') {
+            return mb_substr($rawBody, 0, 350);
+        }
+
+        return $fallback;
+    }
+
+    private function fetchPathaoStatus(Order $order, Courierapi $pathao): ?string
+    {
+        $courierOrderId = trim((string) ($order->courier_order_id ?? ''));
+        if ($courierOrderId === '') {
+            return null;
+        }
+
+        $token = $this->resolvePathaoAccessToken($pathao, false);
+        $endpoint = $this->resolvePathaoStatusEndpoint((string) ($pathao->url ?? ''), $courierOrderId);
+
+        $response = Http::acceptJson()->withToken($token)->get($endpoint);
+        if ($response->status() === 401) {
+            $token = $this->resolvePathaoAccessToken($pathao, true);
+            $response = Http::acceptJson()->withToken($token)->get($endpoint);
+        }
+
+        if (!$response->successful()) {
+            throw ValidationException::withMessages([
+                'pathao' => [$this->resolveCourierErrorMessage($response, 'Pathao status sync failed.')],
+            ]);
+        }
+
+        $rawStatus = $response->json('data.delivery_status')
+            ?? $response->json('data.status')
+            ?? $response->json('status')
+            ?? $response->json('data.order_status');
+
+        if ($rawStatus === null) {
+            return null;
+        }
+
+        return strtolower(trim((string) $rawStatus));
+    }
+
+    private function resolvePathaoStatusEndpoint(string $configuredUrl, string $courierOrderId): string
+    {
+        $candidate = trim($configuredUrl);
+        if ($candidate === '') {
+            return rtrim(self::PATHAO_DEFAULT_BASE_URL, '/') . '/aladdin/api/v1/orders/' . rawurlencode($courierOrderId);
+        }
+
+        if (str_contains($candidate, '%s')) {
+            return sprintf($candidate, rawurlencode($courierOrderId));
+        }
+
+        $normalized = rtrim($candidate, '/');
+        if (preg_match('/\/orders\/[^\/]+$/i', $normalized)) {
+            return $normalized;
+        }
+
+        if (preg_match('/\/orders$/i', $normalized)) {
+            return $normalized . '/' . rawurlencode($courierOrderId);
+        }
+
+        return $normalized . '/aladdin/api/v1/orders/' . rawurlencode($courierOrderId);
     }
 
     private function countOrdersByCanonicalStatus(string $canonicalKey): int

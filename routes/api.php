@@ -107,6 +107,7 @@ Route::prefix('admin')->group(function () {
 
         Route::prefix('orders')->group(function () {
             Route::post('/', [OrderController::class, 'store'])->middleware('admin.permission:orders.edit');
+            Route::get('/courier/list', [OrderController::class, 'courierOrders'])->middleware('admin.permission:orders.view');
             Route::get('/{status}', [OrderController::class, 'index'])->middleware('admin.permission:orders.view');
             Route::get('/detail/{id}', [OrderController::class, 'show'])->middleware('admin.permission:orders.view');
             Route::post('/update-status', [OrderController::class, 'updateStatus'])->middleware('admin.permission:orders.edit');
@@ -116,6 +117,7 @@ Route::prefix('admin')->group(function () {
             Route::post('/courier/steadfast', [OrderController::class, 'sendToSteadfast'])->middleware('admin.permission:orders.edit');
             Route::post('/send-dropshipping', [OrderController::class, 'sendToSteadfast'])->middleware('admin.permission:orders.edit');
             Route::post('/courier/pathao', [OrderController::class, 'sendToPathao'])->middleware('admin.permission:orders.edit');
+            Route::post('/courier/sync-status', [OrderController::class, 'syncCourierStatus'])->middleware('admin.permission:orders.edit');
             Route::post('/print', [OrderController::class, 'printOrders'])->middleware('admin.permission:orders.view');
             Route::get('/invoice/{invoiceId}', [OrderController::class, 'invoice'])->middleware('admin.permission:orders.view');
             Route::put('/invoice/{invoiceId}', [OrderController::class, 'updateByInvoice'])->middleware('admin.permission:orders.edit');

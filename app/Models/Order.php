@@ -11,6 +11,15 @@ class Order extends Model
     
     protected $guarded = ['id'];
 
+    protected $casts = [
+        'amount' => 'integer',
+        'discount' => 'integer',
+        'discount_value' => 'float',
+        'shipping_charge' => 'integer',
+        'is_complete_order' => 'boolean',
+        'courier_synced_at' => 'datetime',
+    ];
+
     public function orderdetails()
     {
         return $this->hasMany(OrderDetails::class, 'order_id');
