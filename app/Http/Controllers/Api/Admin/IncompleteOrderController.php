@@ -12,11 +12,16 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Shipping;
 use App\Models\ShippingCharge;
+use App\Services\OrderStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class IncompleteOrderController extends Controller
 {
+    public function __construct(private readonly OrderStatusService $orderStatusService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = IncompleteOrder::orderByDesc('id');
@@ -190,8 +195,10 @@ class IncompleteOrderController extends Controller
         ]);
 
         $incompleteOrder = IncompleteOrder::findOrFail($id);
+        $this->orderStatusService->ensureDefaultStatuses();
+        $newOrderStatusId = $this->orderStatusService->resolveStatusId('new-order') ?: 1;
 
-        return DB::transaction(function () use ($request, $incompleteOrder) {
+        return DB::transaction(function () use ($request, $incompleteOrder, $newOrderStatusId) {
             $decoded = json_decode($incompleteOrder->cart_data, true) ?: [];
             $items = [];
             $subtotal = 0;
@@ -236,7 +243,7 @@ class IncompleteOrderController extends Controller
                 'shipping_charge' => $shippingCharge->amount,
                 'customer_id' => $customer->id,
                 'district' => $request->district,
-                'order_status' => 1,
+                'order_status' => (string) $newOrderStatusId,
                 'note' => $request->note,
                 'ip_address' => $request->ip(),
             ]);

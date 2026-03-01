@@ -182,12 +182,20 @@ class GeneralSettingController extends Controller
             'footer_bg_color' => 'nullable|string',
             'button_primary_color' => 'nullable|string',
             'button_secondary_color' => 'nullable|string',
+            'button_primary_text_color' => 'nullable|string',
+            'button_secondary_bg_color' => 'nullable|string',
+            'button_secondary_hover_color' => 'nullable|string',
+            'button_secondary_text_color' => 'nullable|string',
+            'button_info_bg_color' => 'nullable|string',
+            'button_info_hover_color' => 'nullable|string',
+            'button_info_text_color' => 'nullable|string',
             'courier_charge' => 'nullable|integer|min:0',
             'fb_link' => 'nullable|string',
             'hotline' => 'nullable|string|max:50',
             'whatsapp' => 'nullable|string|max:50',
             'messenger' => 'nullable|string|max:255',
             'footer_payment_enabled' => 'nullable|in:0,1',
+            'is_stock_visible' => 'nullable|in:0,1',
             'default_courier' => 'nullable|in:pathao,steadfast',
         ];
     }
@@ -287,12 +295,20 @@ class GeneralSettingController extends Controller
             'footer_bg_color',
             'button_primary_color',
             'button_secondary_color',
+            'button_primary_text_color',
+            'button_secondary_bg_color',
+            'button_secondary_hover_color',
+            'button_secondary_text_color',
+            'button_info_bg_color',
+            'button_info_hover_color',
+            'button_info_text_color',
             'courier_charge',
             'fb_link',
             'hotline',
             'whatsapp',
             'messenger',
             'footer_payment_enabled',
+            'is_stock_visible',
             'default_courier',
             'status',
         ];
@@ -305,6 +321,10 @@ class GeneralSettingController extends Controller
                     continue;
                 }
                 if ($field === 'footer_payment_enabled') {
+                    $data[$field] = (int) $validated[$field] === 1 ? 1 : 0;
+                    continue;
+                }
+                if ($field === 'is_stock_visible') {
                     $data[$field] = (int) $validated[$field] === 1 ? 1 : 0;
                     continue;
                 }

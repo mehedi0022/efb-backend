@@ -20,15 +20,20 @@ use Illuminate\Validation\ValidationException;
 
 class OrderService
 {
-    public function __construct(protected CartService $cartService)
+    public function __construct(
+        protected CartService $cartService,
+        protected OrderStatusService $orderStatusService
+    )
     {
     }
 
     public function createOrder(array $data, string $cartId, ?string $ipAddress = null): Order
     {
         $this->ensureOrdersTableExists();
+        $this->orderStatusService->ensureDefaultStatuses();
+        $newOrderStatusId = $this->orderStatusService->resolveStatusId('new-order') ?: 1;
 
-        return DB::transaction(function () use ($data, $cartId, $ipAddress) {
+        return DB::transaction(function () use ($data, $cartId, $ipAddress, $newOrderStatusId) {
             $normalizedIpAddress = $this->normalizeIpAddress($ipAddress);
             $cart = $this->cartService->getCart($cartId);
 
@@ -92,7 +97,7 @@ class OrderService
                 'discount' => (int) $discount,
                 'shipping_charge' => (int) $shippingFee,
                 'customer_id' => $customer->id,
-                'order_status' => 'pending', // table is string, passing string is safer
+                'order_status' => (string) $newOrderStatusId,
                 'ip_address' => $normalizedIpAddress,
                  // 'note' and 'district' removed as they don't exist in migration
             ]);

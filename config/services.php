@@ -53,4 +53,20 @@ return [
         'seller_code' => env('EFB_SELLER_CODE'),
     ],
 
+    'pathao' => [
+        'base_url' => env('PATHAO_BASE_URL', 'https://api-hermes.pathao.com'),
+        'client_id' => env('PATHAO_CLIENT_ID'),
+        'client_secret' => env('PATHAO_CLIENT_SECRET'),
+        'username' => env('PATHAO_USERNAME'),
+        'password' => env('PATHAO_PASSWORD'),
+        'store_id' => env('PATHAO_STORE_ID'),
+        'default_city_id' => env('PATHAO_DEFAULT_CITY_ID'),
+        'default_zone_id' => env('PATHAO_DEFAULT_ZONE_ID'),
+        'default_area_id' => env('PATHAO_DEFAULT_AREA_ID'),
+        'delivery_type' => env('PATHAO_DELIVERY_TYPE', 48),
+        'item_type' => env('PATHAO_ITEM_TYPE', 2),
+        'weight_per_item' => env('PATHAO_WEIGHT_PER_ITEM', 0.2),
+        'grant_type' => env('PATHAO_GRANT_TYPE', 'password'),
+    ],
+
 ];

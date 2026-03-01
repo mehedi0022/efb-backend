@@ -149,20 +149,22 @@ class ApiIntegrationController extends Controller
     public function getPathaoToken(Request $request)
     {
         $validated = $request->validate([
-            'client_id' => 'required|string',
-            'client_secret' => 'required|string',
-            'username' => 'required|string',
-            'password' => 'required|string',
             'url' => 'nullable|string|max:255',
         ]);
 
         try {
+            /** @var Courierapi|null $pathao */
+            $pathao = Courierapi::query()->where('type', 'pathao')->first();
+            $credentials = $this->resolvePathaoCredentials($pathao);
+
             $tokenResponse = $this->requestPathaoToken(
-                clientId: trim((string) $validated['client_id']),
-                clientSecret: trim((string) $validated['client_secret']),
-                username: trim((string) $validated['username']),
-                password: trim((string) $validated['password']),
-                baseUrl: isset($validated['url']) ? trim((string) $validated['url']) : null
+                clientId: $credentials['client_id'],
+                clientSecret: $credentials['client_secret'],
+                username: $credentials['username'],
+                password: $credentials['password'],
+                baseUrl: isset($validated['url'])
+                    ? trim((string) $validated['url'])
+                    : trim((string) ($pathao?->url ?: $this->pathaoDefaultBaseUrl()))
             );
 
             return response()->json([
@@ -188,7 +190,7 @@ class ApiIntegrationController extends Controller
             ['type' => 'pathao'],
             [
                 'status' => 0,
-                'url' => self::PATHAO_DEFAULT_BASE_URL,
+                'url' => $this->pathaoDefaultBaseUrl(),
             ]
         );
 
@@ -265,6 +267,8 @@ class ApiIntegrationController extends Controller
                 return;
             }
 
+            $credentials = $this->resolvePathaoCredentials($courier);
+
             $token = trim((string) ($courier->token ?? ''));
             $forceRefresh = $request->boolean('refresh_token') || $token === '' || $courier->tokenExpired();
             if (!$forceRefresh) {
@@ -272,11 +276,11 @@ class ApiIntegrationController extends Controller
             }
 
             $tokenResponse = $this->requestPathaoToken(
-                clientId: trim((string) $courier->client_id),
-                clientSecret: trim((string) $courier->client_secret),
-                username: trim((string) $courier->username),
-                password: trim((string) $courier->password),
-                baseUrl: trim((string) ($courier->url ?: self::PATHAO_DEFAULT_BASE_URL))
+                clientId: $credentials['client_id'],
+                clientSecret: $credentials['client_secret'],
+                username: $credentials['username'],
+                password: $credentials['password'],
+                baseUrl: trim((string) ($courier->url ?: $this->pathaoDefaultBaseUrl()))
             );
 
             $courier->token = $tokenResponse['token'];
@@ -299,10 +303,11 @@ class ApiIntegrationController extends Controller
 
     private function hasPathaoCredentials(Courierapi $courier): bool
     {
-        return trim((string) ($courier->client_id ?? '')) !== ''
-            && trim((string) ($courier->client_secret ?? '')) !== ''
-            && trim((string) ($courier->username ?? '')) !== ''
-            && trim((string) ($courier->password ?? '')) !== '';
+        if ($this->pathaoCredentialsAreComplete($this->pathaoCredentialsFromEnvironment())) {
+            return true;
+        }
+
+        return $this->pathaoCredentialsAreComplete($this->pathaoCredentialsFromCourier($courier));
     }
 
     /**
@@ -330,7 +335,7 @@ class ApiIntegrationController extends Controller
         $response = Http::acceptJson()->asJson()->post($endpoint, [
             'client_id' => $clientId,
             'client_secret' => $clientSecret,
-            'grant_type' => 'password',
+            'grant_type' => trim((string) config('services.pathao.grant_type', 'password')) ?: 'password',
             'username' => $username,
             'password' => $password,
         ]);
@@ -343,15 +348,23 @@ class ApiIntegrationController extends Controller
         }
 
         $data = $response->json();
-        $token = trim((string) ($data['access_token'] ?? ''));
+        $token = trim((string) (
+            $data['access_token']
+            ?? data_get($data, 'data.access_token')
+            ?? data_get($data, 'result.access_token')
+            ?? ''
+        ));
         if ($token === '') {
             throw ValidationException::withMessages([
                 'token' => ['Pathao did not return a valid access token.'],
             ]);
         }
 
-        $expiresIn = isset($data['expires_in']) && is_numeric($data['expires_in'])
-            ? max(60, (int) $data['expires_in'])
+        $expiresInRaw = $data['expires_in']
+            ?? data_get($data, 'data.expires_in')
+            ?? data_get($data, 'result.expires_in');
+        $expiresIn = $expiresInRaw !== null && is_numeric($expiresInRaw)
+            ? max(60, (int) $expiresInRaw)
             : null;
 
         $expiresAt = $expiresIn
@@ -367,9 +380,9 @@ class ApiIntegrationController extends Controller
 
     private function resolvePathaoTokenEndpoint(?string $baseUrl = null): string
     {
-        $candidate = trim((string) ($baseUrl ?? self::PATHAO_DEFAULT_BASE_URL));
+        $candidate = trim((string) ($baseUrl ?? $this->pathaoDefaultBaseUrl()));
         if ($candidate === '') {
-            $candidate = self::PATHAO_DEFAULT_BASE_URL;
+            $candidate = $this->pathaoDefaultBaseUrl();
         }
 
         if (preg_match('/\/issue-token\/?$/i', $candidate)) {
@@ -382,31 +395,179 @@ class ApiIntegrationController extends Controller
 
     private function resolvePathaoErrorMessage(Response $response): string
     {
-        $message = $response->json('message');
-        if (is_string($message) && trim($message) !== '') {
-            return trim($message);
+        $message = trim((string) (
+            $response->json('message')
+            ?? $response->json('data.message')
+            ?? $response->json('result.message')
+            ?? ''
+        ));
+
+        $errors = $this->extractPathaoApiErrors($response);
+        if (!empty($errors)) {
+            $combined = implode(' ', $errors);
+            if ($message === '' || $this->isGenericPathaoErrorMessage($message)) {
+                return mb_substr($combined, 0, 350);
+            }
+
+            return mb_substr(trim($message . ' ' . $combined), 0, 350);
         }
 
-        $errors = $response->json('errors');
-        if (is_array($errors) && !empty($errors)) {
-            $flatErrors = collect($errors)
-                ->flatten()
-                ->map(fn ($item) => trim((string) $item))
-                ->filter()
-                ->values()
-                ->all();
-
-            if (!empty($flatErrors)) {
-                return implode(' ', $flatErrors);
-            }
+        if ($message !== '' && !$this->isGenericPathaoErrorMessage($message)) {
+            return mb_substr($message, 0, 350);
         }
 
         $rawBody = trim((string) $response->body());
         if ($rawBody !== '') {
-            return mb_substr($rawBody, 0, 300);
+            if ($message !== '' && !$this->isGenericPathaoErrorMessage($message)) {
+                return mb_substr($message, 0, 350);
+            }
+
+            return mb_substr($rawBody, 0, 350);
+        }
+
+        if ($message !== '') {
+            return mb_substr($message, 0, 350);
         }
 
         return 'Pathao token request failed.';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractPathaoApiErrors(Response $response): array
+    {
+        $segments = [
+            $response->json('errors'),
+            $response->json('error'),
+            $response->json('data.errors'),
+            $response->json('data.error'),
+            $response->json('data.validation_errors'),
+            $response->json('result.error'),
+            $response->json('result.errors'),
+            $response->json('data.message'),
+            $response->json('result.message'),
+        ];
+
+        return collect($segments)
+            ->flatMap(fn ($segment) => $this->flattenPathaoErrorSegment($segment))
+            ->map(fn ($item) => trim((string) $item))
+            ->filter(fn ($item) => $item !== '' && !$this->isGenericPathaoErrorMessage($item))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function flattenPathaoErrorSegment(mixed $segment, ?string $field = null): array
+    {
+        if ($segment === null || is_bool($segment)) {
+            return [];
+        }
+
+        if (is_numeric($segment)) {
+            return [];
+        }
+
+        if (is_string($segment)) {
+            $message = trim($segment);
+            if ($message === '' || $this->shouldIgnorePathaoErrorField($field)) {
+                return [];
+            }
+
+            if ($field !== null && trim($field) !== '' && !$this->isPathaoErrorContainerKey($field)) {
+                return [
+                    sprintf('%s: %s', $this->formatPathaoErrorField($field), $message),
+                ];
+            }
+
+            return [$message];
+        }
+
+        if (!is_array($segment) || empty($segment)) {
+            return [];
+        }
+
+        if (array_key_exists('field', $segment) && array_key_exists('message', $segment)) {
+            $fieldName = trim((string) ($segment['field'] ?? ''));
+            $fieldMessage = trim((string) ($segment['message'] ?? ''));
+
+            if ($fieldMessage !== '') {
+                if ($fieldName === '') {
+                    return [$fieldMessage];
+                }
+
+                return [
+                    sprintf('%s: %s', $this->formatPathaoErrorField($fieldName), $fieldMessage),
+                ];
+            }
+        }
+
+        $messages = [];
+        foreach ($segment as $key => $value) {
+            $nextField = $field;
+            if (is_string($key) && trim($key) !== '' && !$this->isPathaoErrorContainerKey($key)) {
+                $nextField = $key;
+            }
+
+            $messages = array_merge(
+                $messages,
+                $this->flattenPathaoErrorSegment($value, $nextField)
+            );
+        }
+
+        return $messages;
+    }
+
+    private function isPathaoErrorContainerKey(string $key): bool
+    {
+        return in_array(strtolower(trim($key)), [
+            'errors',
+            'error',
+            'messages',
+            'message',
+            'data',
+            'result',
+            'details',
+            'detail',
+            'validation_errors',
+        ], true);
+    }
+
+    private function shouldIgnorePathaoErrorField(?string $field): bool
+    {
+        if ($field === null) {
+            return false;
+        }
+
+        return in_array(strtolower(trim($field)), [
+            'success',
+            'status',
+            'status_code',
+            'http_code',
+            'code',
+            'error_code',
+            'type',
+        ], true);
+    }
+
+    private function formatPathaoErrorField(string $field): string
+    {
+        return ucfirst(str_replace(['_', '-'], ' ', trim($field)));
+    }
+
+    private function isGenericPathaoErrorMessage(string $message): bool
+    {
+        return in_array(strtolower(trim($message)), [
+            'please fix the given errors',
+            'please fix the given error',
+            'validation failed',
+            'unprocessable entity',
+            'the given data was invalid.',
+            'error',
+        ], true);
     }
 
     /**
@@ -414,6 +575,15 @@ class ApiIntegrationController extends Controller
      */
     private function formatCourierConfig(Courierapi $courier): array
     {
+        $isPathao = strtolower(trim((string) $courier->type)) === 'pathao';
+        $envCredentials = $this->pathaoCredentialsFromEnvironment();
+        $storedCredentials = $this->pathaoCredentialsFromCourier($courier);
+        $hasAnyStoredCredential = collect($storedCredentials)
+            ->contains(fn ($value) => trim((string) $value) !== '');
+        $managedByBackend = $isPathao
+            && $this->pathaoCredentialsAreComplete($envCredentials)
+            && !$hasAnyStoredCredential;
+
         return [
             'id' => (int) $courier->id,
             'type' => (string) $courier->type,
@@ -421,17 +591,90 @@ class ApiIntegrationController extends Controller
             'status' => (int) ($courier->status ?? 0),
             'api_key' => '',
             'secret_key' => '',
-            'client_id' => $courier->client_id ?: '',
+            'client_id' => '',
             'client_secret' => '',
-            'username' => $courier->username ?: '',
+            'username' => '',
             'password' => '',
-            'token' => $courier->token ?: '',
+            'token' => '',
             'token_expires_at' => optional($courier->token_expires_at)->toDateTimeString(),
             'has_api_key' => trim((string) ($courier->api_key ?? '')) !== '',
             'has_secret_key' => trim((string) ($courier->secret_key ?? '')) !== '',
-            'has_client_secret' => trim((string) ($courier->client_secret ?? '')) !== '',
-            'has_password' => trim((string) ($courier->password ?? '')) !== '',
+            'has_client_id' => trim((string) ($storedCredentials['client_id'] ?? '')) !== '' || $managedByBackend,
+            'has_username' => trim((string) ($storedCredentials['username'] ?? '')) !== '' || $managedByBackend,
+            'has_client_secret' => trim((string) ($storedCredentials['client_secret'] ?? '')) !== '' || $managedByBackend,
+            'has_password' => trim((string) ($storedCredentials['password'] ?? '')) !== '' || $managedByBackend,
+            'has_token' => trim((string) ($courier->token ?? '')) !== '',
+            'managed_by_backend' => $managedByBackend,
             'updated_at' => optional($courier->updated_at)->toDateTimeString(),
         ];
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function pathaoCredentialsFromEnvironment(): array
+    {
+        return [
+            'client_id' => trim((string) config('services.pathao.client_id', '')),
+            'client_secret' => trim((string) config('services.pathao.client_secret', '')),
+            'username' => trim((string) config('services.pathao.username', '')),
+            'password' => trim((string) config('services.pathao.password', '')),
+        ];
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function pathaoCredentialsFromCourier(Courierapi $courier): array
+    {
+        return [
+            'client_id' => trim((string) ($courier->client_id ?? '')),
+            'client_secret' => trim((string) ($courier->client_secret ?? '')),
+            'username' => trim((string) ($courier->username ?? '')),
+            'password' => trim((string) ($courier->password ?? '')),
+        ];
+    }
+
+    /**
+     * @param array{client_id:string,client_secret:string,username:string,password:string} $credentials
+     */
+    private function pathaoCredentialsAreComplete(array $credentials): bool
+    {
+        return $credentials['client_id'] !== ''
+            && $credentials['client_secret'] !== ''
+            && $credentials['username'] !== ''
+            && $credentials['password'] !== '';
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function resolvePathaoCredentials(?Courierapi $courier = null): array
+    {
+        if ($courier !== null) {
+            $storedCredentials = $this->pathaoCredentialsFromCourier($courier);
+            if ($this->pathaoCredentialsAreComplete($storedCredentials)) {
+                return $storedCredentials;
+            }
+        }
+
+        $secureCredentials = $this->pathaoCredentialsFromEnvironment();
+        if ($this->pathaoCredentialsAreComplete($secureCredentials)) {
+            return $secureCredentials;
+        }
+
+        throw ValidationException::withMessages([
+            'credentials' => ['Pathao credentials are missing in backend configuration.'],
+        ]);
+    }
+
+    private function pathaoDefaultBaseUrl(): string
+    {
+        $configured = trim((string) config('services.pathao.base_url', ''));
+        if ($configured !== '') {
+            return rtrim($configured, '/');
+        }
+
+        return self::PATHAO_DEFAULT_BASE_URL;
     }
 }

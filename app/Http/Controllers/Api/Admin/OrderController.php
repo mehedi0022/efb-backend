@@ -9,6 +9,8 @@ use App\Models\OrderDetails;
 use App\Models\Customer;
 use App\Models\Courierapi;
 use App\Models\District;
+use App\Models\GeneralSetting;
+use App\Models\Contact;
 use App\Models\Product;
 use App\Models\OrderStatus;
 use App\Models\Payment;
@@ -26,6 +28,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class OrderController extends Controller
 {
@@ -39,6 +42,7 @@ class OrderController extends Controller
     private const PATHAO_DEFAULT_BASE_URL = 'https://api-hermes.pathao.com';
     private const PATHAO_ISSUE_TOKEN_PATH = '/aladdin/api/v1/issue-token';
     private const PATHAO_CREATE_ORDER_PATH = '/aladdin/api/v1/orders';
+    private const PATHAO_STORES_PATH = '/aladdin/api/v1/stores';
     private const PATHAO_ORDER_STATUS_PATH = '/aladdin/api/v1/orders/%s';
 
     public function __construct(private readonly OrderStatusService $orderStatusService)
@@ -80,6 +84,22 @@ class OrderController extends Controller
                         }
                     }
                 });
+            }
+
+            if ($request->filled('name')) {
+                $name = trim((string) $request->input('name'));
+                $query->where(function ($nameQuery) use ($name) {
+                    $nameQuery->whereHas('customer', function ($customerQuery) use ($name) {
+                        $customerQuery->where('name', 'LIKE', "%{$name}%");
+                    })->orWhereHas('shipping', function ($shippingQuery) use ($name) {
+                        $shippingQuery->where('name', 'LIKE', "%{$name}%");
+                    });
+                });
+            }
+
+            if ($request->filled('tracking_code') && Schema::hasColumn('orders', 'courier_order_id')) {
+                $trackingCode = trim((string) $request->input('tracking_code'));
+                $query->where('courier_order_id', 'LIKE', "%{$trackingCode}%");
             }
 
             // Search by keyword
@@ -145,6 +165,8 @@ class OrderController extends Controller
         $validated = $request->validate([
             'courier' => 'nullable|string|in:pathao,steadfast',
             'status' => 'nullable|string|max:60',
+            'name' => 'nullable|string|max:155',
+            'tracking_code' => 'nullable|string|max:120',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date',
             'per_page' => 'nullable|integer|min:1|max:100',
@@ -184,6 +206,22 @@ class OrderController extends Controller
                 $query->whereRaw('LOWER(TRIM(courier_status)) = ?', [
                     strtolower(trim((string) $validated['status'])),
                 ]);
+            }
+
+            if (!empty($validated['name'])) {
+                $name = trim((string) $validated['name']);
+                $query->where(function ($nameQuery) use ($name) {
+                    $nameQuery->whereHas('customer', function ($customerQuery) use ($name) {
+                        $customerQuery->where('name', 'LIKE', "%{$name}%");
+                    })->orWhereHas('shipping', function ($shippingQuery) use ($name) {
+                        $shippingQuery->where('name', 'LIKE', "%{$name}%");
+                    });
+                });
+            }
+
+            if (!empty($validated['tracking_code']) && Schema::hasColumn('orders', 'courier_order_id')) {
+                $trackingCode = trim((string) $validated['tracking_code']);
+                $query->where('courier_order_id', 'LIKE', "%{$trackingCode}%");
             }
 
             $dateColumn = Schema::hasColumn('orders', 'courier_synced_at')
@@ -429,7 +467,7 @@ class OrderController extends Controller
 
         try {
             $this->orderStatusService->ensureDefaultStatuses();
-            $defaultStatusId = $this->orderStatusService->resolveStatusId('pending') ?: 1;
+            $defaultStatusId = $this->orderStatusService->resolveStatusId('new-order') ?: 1;
             $resolvedStatusId = $defaultStatusId;
 
             if (
@@ -830,14 +868,12 @@ class OrderController extends Controller
 
             $stats = [
                 'total' => Order::count(),
-                'pending' => $this->countOrdersByCanonicalStatus('pending'),
-                'processing' => $this->countOrdersByCanonicalStatus('processing'),
-                'confirmed' => $this->countOrdersByCanonicalStatus('confirmed'),
-                'delivered' => $this->countOrdersByCanonicalStatus('delivered'),
-                'cancelled' => $this->countOrdersByCanonicalStatus('cancelled'),
+                'new_order' => $this->countOrdersByCanonicalStatus('new_order'),
                 'complete' => $this->countOrdersByCanonicalStatus('complete'),
-                'returned' => $this->countOrdersByCanonicalStatus('returned'),
+                'no_response' => $this->countOrdersByCanonicalStatus('no_response'),
                 'hold' => $this->countOrdersByCanonicalStatus('hold'),
+                'cancel' => $this->countOrdersByCanonicalStatus('cancel'),
+                'fb_sent' => $this->countOrdersByCanonicalStatus('fb_sent'),
                 'today' => Order::whereDate('created_at', Carbon::today())->count(),
                 'this_month' => Order::whereMonth('created_at', Carbon::now()->month)->count(),
             ];
@@ -886,6 +922,7 @@ class OrderController extends Controller
         }
 
         $canMarkCompleteOrder = Schema::hasColumn('orders', 'is_complete_order');
+        $fbSentStatusId = $this->orderStatusService->resolveStatusId('fb-sent');
 
         $sellerCode = $this->getSellerCode($request);
         if (!$sellerCode) {
@@ -911,6 +948,8 @@ class OrderController extends Controller
                 ];
                 continue;
             }
+
+            $this->recalculateOrderFinancials($order);
 
             $payload = $this->buildDropshippingPayload($order, $sellerCode);
             $itemErrors = $payload['item_errors'] ?? [];
@@ -963,8 +1002,12 @@ class OrderController extends Controller
             if ($response->successful()) {
                 if ($canMarkCompleteOrder) {
                     $order->is_complete_order = 1;
-                    $order->save();
                 }
+
+                if ($fbSentStatusId !== null) {
+                    $order->order_status = (string) $fbSentStatusId;
+                }
+                $order->save();
 
                 $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
                 $this->recordCourierDispatch(
@@ -1025,6 +1068,13 @@ class OrderController extends Controller
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'required|integer|exists:orders,id',
             'refresh_token' => 'nullable|boolean',
+            'store_id' => 'nullable|string|max:120',
+            'recipient_city' => 'nullable|integer|min:1',
+            'recipient_zone' => 'nullable|integer|min:1',
+            'recipient_area' => 'nullable|integer|min:1',
+            'delivery_type' => 'nullable|integer|min:1',
+            'item_type' => 'nullable|integer|min:1',
+            'item_weight' => 'nullable|numeric|min:0.1|max:30',
         ]);
 
         /** @var Courierapi|null $pathao */
@@ -1061,6 +1111,21 @@ class OrderController extends Controller
             ], 422);
         }
 
+        $storeId = $this->resolvePathaoStoreId(
+            $pathao,
+            $pathaoToken,
+            $validated['store_id'] ?? null
+        );
+
+        $payloadOverrides = [
+            'recipient_city' => $validated['recipient_city'] ?? null,
+            'recipient_zone' => $validated['recipient_zone'] ?? null,
+            'recipient_area' => $validated['recipient_area'] ?? null,
+            'delivery_type' => $validated['delivery_type'] ?? null,
+            'item_type' => $validated['item_type'] ?? null,
+            'item_weight' => $validated['item_weight'] ?? null,
+        ];
+
         $sentOrders = [];
         $failedOrders = [];
 
@@ -1074,14 +1139,51 @@ class OrderController extends Controller
                 continue;
             }
 
-            $payload = $this->buildPathaoPayload($order);
+            $this->recalculateOrderFinancials($order);
+
+            if ($this->isOrderAlreadyTakenByCourier($order)) {
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $this->buildOrderAlreadyTakenMessage($order),
+                ];
+                continue;
+            }
+
+            if (!$this->isCompletedOrderForCourierDispatch($order)) {
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => 'Only completed orders can be sent to Pathao.',
+                ];
+                continue;
+            }
+
+            $payload = $this->buildPathaoPayload(
+                $order,
+                $payloadOverrides,
+                $storeId
+            );
 
             try {
-                $response = $this->dispatchPathaoOrderRequest($endpoint, $pathaoToken, $payload);
+                $response = $this->dispatchPathaoOrderRequest(
+                    $endpoint,
+                    $pathaoToken,
+                    $payload,
+                    $storeId
+                );
 
                 if ($response->status() === 401) {
                     $pathaoToken = $this->resolvePathaoAccessToken($pathao, true);
-                    $response = $this->dispatchPathaoOrderRequest($endpoint, $pathaoToken, $payload);
+                    if ($storeId === null) {
+                        $storeId = $this->resolvePathaoStoreId($pathao, $pathaoToken, $validated['store_id'] ?? null);
+                    }
+                    $response = $this->dispatchPathaoOrderRequest(
+                        $endpoint,
+                        $pathaoToken,
+                        $payload,
+                        $storeId
+                    );
                 }
             } catch (Throwable $exception) {
                 $failedMessage = trim((string) $exception->getMessage()) ?: 'Pathao request failed.';
@@ -1142,35 +1244,406 @@ class OrderController extends Controller
     }
 
     /**
-     * Print orders (basic HTML response)
+     * Get Pathao meta data (stores + cities + defaults) for dispatch modal.
+     */
+    public function pathaoMeta(Request $request)
+    {
+        /** @var Courierapi|null $pathao */
+        $pathao = Courierapi::query()
+            ->where('type', 'pathao')
+            ->first();
+
+        if (!$pathao) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao configuration not found. Please configure Pathao first.',
+            ], 422);
+        }
+
+        if ((int) ($pathao->status ?? 0) !== 1) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao integration is inactive. Activate it from courier settings.',
+            ], 422);
+        }
+
+        try {
+            $token = $this->resolvePathaoAccessToken($pathao, $request->boolean('refresh_token'));
+            $stores = [];
+            try {
+                $stores = $this->fetchPathaoStoreOptionsFromApi($pathao, $token);
+            } catch (Throwable $exception) {
+                $stores = [];
+            }
+            $cities = $this->fetchPathaoCityOptionsFromApi($pathao, $token);
+
+            $resolvedStoreId = $this->resolvePathaoStoreId($pathao, $token, null);
+            if ($resolvedStoreId !== null) {
+                $storeExists = collect($stores)->contains(fn ($store) => (string) ($store['id'] ?? '') === (string) $resolvedStoreId);
+                if (!$storeExists) {
+                    $stores[] = [
+                        'id' => $this->normalizePathaoLocationValue($resolvedStoreId),
+                        'name' => 'Store ' . $resolvedStoreId,
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success',
+                'data' => [
+                    'stores' => $stores,
+                    'cities' => $cities,
+                    'defaults' => [
+                        'store_id' => $resolvedStoreId,
+                        'recipient_city' => $this->normalizePathaoLocationValue(config('services.pathao.default_city_id')),
+                        'recipient_zone' => $this->normalizePathaoLocationValue(config('services.pathao.default_zone_id')),
+                        'recipient_area' => $this->normalizePathaoLocationValue(config('services.pathao.default_area_id')),
+                    ],
+                ],
+            ]);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => collect($exception->errors())->flatten()->first() ?: 'Unable to load Pathao location data.',
+                'errors' => $exception->errors(),
+            ], 422);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Unable to load Pathao location data right now.',
+            ], 422);
+        }
+    }
+
+    /**
+     * Get Pathao zones by city.
+     */
+    public function pathaoZones(Request $request)
+    {
+        $validated = $request->validate([
+            'city_id' => 'required|integer|min:1',
+            'refresh_token' => 'nullable|boolean',
+        ]);
+
+        /** @var Courierapi|null $pathao */
+        $pathao = Courierapi::query()
+            ->where('type', 'pathao')
+            ->first();
+
+        if (!$pathao) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao configuration not found. Please configure Pathao first.',
+            ], 422);
+        }
+
+        try {
+            $token = $this->resolvePathaoAccessToken($pathao, $request->boolean('refresh_token'));
+            $zones = $this->fetchPathaoZoneOptionsFromApi($pathao, $token, (int) $validated['city_id']);
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success',
+                'data' => [
+                    'city_id' => (int) $validated['city_id'],
+                    'zones' => $zones,
+                ],
+            ]);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => collect($exception->errors())->flatten()->first() ?: 'Unable to load Pathao zones.',
+                'errors' => $exception->errors(),
+            ], 422);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Unable to load Pathao zones right now.',
+            ], 422);
+        }
+    }
+
+    /**
+     * Get Pathao areas by zone.
+     */
+    public function pathaoAreas(Request $request)
+    {
+        $validated = $request->validate([
+            'zone_id' => 'required|integer|min:1',
+            'refresh_token' => 'nullable|boolean',
+        ]);
+
+        /** @var Courierapi|null $pathao */
+        $pathao = Courierapi::query()
+            ->where('type', 'pathao')
+            ->first();
+
+        if (!$pathao) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Pathao configuration not found. Please configure Pathao first.',
+            ], 422);
+        }
+
+        try {
+            $token = $this->resolvePathaoAccessToken($pathao, $request->boolean('refresh_token'));
+            $areas = $this->fetchPathaoAreaOptionsFromApi($pathao, $token, (int) $validated['zone_id']);
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success',
+                'data' => [
+                    'zone_id' => (int) $validated['zone_id'],
+                    'areas' => $areas,
+                ],
+            ]);
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => collect($exception->errors())->flatten()->first() ?: 'Unable to load Pathao areas.',
+                'errors' => $exception->errors(),
+            ], 422);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Unable to load Pathao areas right now.',
+            ], 422);
+        }
+    }
+
+    /**
+     * Print orders (styled HTML response for bulk invoice printing)
      */
     public function printOrders(Request $request)
     {
-        $request->validate([
-            'order_ids' => 'required|array',
+        $validated = $request->validate([
+            'order_ids' => ['required', 'array', 'min:1'],
+            'order_ids.*' => ['integer', 'min:1'],
         ]);
 
-        $orders = Order::with(['orderdetails', 'shipping', 'payment'])->whereIn('id', $request->order_ids)->get();
+        $orderIds = collect($validated['order_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
 
-        $html = '<html><head><title>Orders Print</title><style>body{font-family:Arial, sans-serif;}table{width:100%;border-collapse:collapse;margin-bottom:24px;}th,td{border:1px solid #ddd;padding:8px;font-size:12px;}th{background:#f5f5f5;}</style></head><body>';
-        foreach ($orders as $order) {
-            $html .= '<h3>Invoice #' . $order->invoice_id . '</h3>';
-            $html .= '<p><strong>Customer:</strong> ' . ($order->shipping->name ?? '') . ' | ' . ($order->shipping->phone ?? '') . '</p>';
-            $html .= '<table><thead><tr><th>Product</th><th>Qty</th><th>Price</th></tr></thead><tbody>';
-            $subTotal = 0;
-            foreach ($order->orderdetails as $detail) {
-                $lineTotal = ($detail->sale_price ?? 0) * ($detail->qty ?? 0);
-                $subTotal += $lineTotal;
-                $html .= '<tr><td>' . ($detail->product_name ?? '') . '</td><td>' . ($detail->qty ?? 0) . '</td><td>' . $lineTotal . '</td></tr>';
-            }
-            $html .= '<tr><td colspan=\"2\">Shipping</td><td>' . ($order->shipping_charge ?? 0) . '</td></tr>';
-            $html .= '<tr><td colspan=\"2\">Discount</td><td>' . ($order->discount ?? 0) . '</td></tr>';
-            $html .= '<tr><td colspan=\"2\"><strong>Total</strong></td><td><strong>' . ($subTotal + ($order->shipping_charge ?? 0) - ($order->discount ?? 0)) . '</strong></td></tr>';
-            $html .= '</tbody></table>';
+        if ($orderIds->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No valid order ids were provided.',
+            ], 422);
         }
-        $html .= '</body></html>';
 
-        return response()->json(['success' => true, 'view' => $html]);
+        $orders = Order::query()
+            ->with([
+                'orderdetails:id,order_id,product_name,product_size,product_color,sale_price,qty,image',
+                'shipping:id,order_id,name,phone,address,area',
+                'payment:id,order_id,payment_method',
+            ])
+            ->whereIn('id', $orderIds->all())
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No orders were found for printing.',
+            ], 404);
+        }
+
+        $orderPriority = array_flip($orderIds->all());
+        $orders = $orders
+            ->sortBy(fn ($order) => $orderPriority[(int) $order->id] ?? PHP_INT_MAX)
+            ->values();
+
+        $generalSetting = GeneralSetting::query()
+            ->where('status', 1)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$generalSetting) {
+            $generalSetting = GeneralSetting::query()->orderByDesc('id')->first();
+        }
+
+        $contact = Contact::query()
+            ->where('status', 1)
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$contact) {
+            $contact = Contact::query()->orderByDesc('id')->first();
+        }
+
+        $companyName = $this->escapePrintValue($generalSetting?->name ?? config('app.name', 'Company'));
+        $companyAddress = $this->escapePrintValue($contact?->address ?? '');
+        $companyPhone = $this->escapePrintValue($contact?->hotline ?: ($contact?->phone ?: ($generalSetting?->hotline ?? '')));
+        $logoPath = $generalSetting?->logo ?? $generalSetting?->white_logo ?? $generalSetting?->dark_logo ?? null;
+        $companyLogo = $this->resolveImageUrl(is_string($logoPath) ? $logoPath : null);
+        $companyLogoHtml = $companyLogo
+            ? '<img src="' . $this->escapePrintValue($companyLogo) . '" alt="' . $companyName . '" class="brand-logo" />'
+            : '';
+
+        $cardsHtml = '';
+
+        foreach ($orders as $order) {
+            $customerName = $this->escapePrintValue($order->shipping?->name ?? '');
+            $customerPhone = $this->escapePrintValue($order->shipping?->phone ?? '');
+            $customerAddress = $this->escapePrintValue($order->shipping?->address ?? '');
+            $customerArea = trim((string) ($order->shipping?->area ?? ''));
+            $invoiceId = $this->escapePrintValue($order->invoice_id ?? '');
+            $createdAt = $this->escapePrintValue($this->formatPrintDate($order->created_at));
+            $paymentMethod = $this->escapePrintValue($this->resolvePaymentMethodLabel($order->payment?->payment_method));
+
+            $shippingCharge = (float) ($order->shipping_charge ?? 0);
+            $discount = (float) ($order->discount ?? 0);
+            $subTotal = 0.0;
+            $itemRowsHtml = '';
+
+            foreach ($order->orderdetails as $detail) {
+                $qty = (float) ($detail->qty ?? 0);
+                $salePrice = (float) ($detail->sale_price ?? 0);
+                $lineTotal = $qty * $salePrice;
+                $subTotal += $lineTotal;
+
+                $productName = $this->escapePrintValue($detail->product_name ?? '');
+                $variantMeta = [];
+                if (!empty($detail->product_size)) {
+                    $variantMeta[] = 'Size: ' . $this->escapePrintValue($detail->product_size);
+                }
+                if (!empty($detail->product_color)) {
+                    $variantMeta[] = 'Color: ' . $this->escapePrintValue($detail->product_color);
+                }
+                $variantMetaHtml = !empty($variantMeta)
+                    ? '<div class="product-meta">' . implode(' | ', $variantMeta) . '</div>'
+                    : '';
+
+                $thumb = $this->resolveImageUrl($detail->image);
+                $thumbHtml = $thumb
+                    ? '<img src="' . $this->escapePrintValue($thumb) . '" alt="Product" class="product-thumb" />'
+                    : '<span class="product-thumb placeholder"></span>';
+
+                $itemRowsHtml .= '<tr>'
+                    . '<td>'
+                    . '<div class="product-cell">'
+                    . $thumbHtml
+                    . '<div><div class="product-name">' . $productName . '</div>' . $variantMetaHtml . '</div>'
+                    . '</div>'
+                    . '</td>'
+                    . '<td class="center-cell">' . $this->escapePrintValue($this->formatPrintQuantity($qty)) . '</td>'
+                    . '<td class="right-cell">' . $this->escapePrintValue($this->formatPrintMoney($lineTotal)) . '</td>'
+                    . '</tr>';
+            }
+
+            if ($itemRowsHtml === '') {
+                $itemRowsHtml = '<tr><td>-</td><td class="center-cell">0</td><td class="right-cell">0 Tk</td></tr>';
+            }
+
+            $deliveryText = $this->formatPrintMoney($shippingCharge);
+            $discountText = $this->formatPrintMoney($discount);
+            $totalText = $this->formatPrintMoney($subTotal + $shippingCharge - $discount);
+
+            $areaWithCharge = trim($customerArea);
+            if ($areaWithCharge !== '') {
+                $areaWithCharge .= ' ' . $deliveryText;
+            } else {
+                $areaWithCharge = $deliveryText;
+            }
+
+            $cardsHtml .= '<section class="print-card">'
+                . '<div class="card-head">'
+                . '<div class="head-col customer-col">'
+                . '<p class="customer-line customer-name">' . $customerName . '</p>'
+                . '<p class="customer-line">' . $customerPhone . '</p>'
+                . '<p class="customer-line">' . $customerAddress . '</p>'
+                . '<p class="customer-line">' . $this->escapePrintValue($areaWithCharge) . '</p>'
+                . '</div>'
+                . '<div class="head-col brand-col">'
+                . $companyLogoHtml
+                . '<p class="brand-line">' . $companyAddress . '</p>'
+                . '<p class="brand-line">' . $companyPhone . '</p>'
+                . '</div>'
+                . '<div class="head-col invoice-col">'
+                . '<p class="invoice-title">Invoice #' . $invoiceId . '</p>'
+                . '<p class="invoice-meta">Order Date: ' . $createdAt . '</p>'
+                . '<p class="invoice-meta">Payment: ' . $paymentMethod . '</p>'
+                . '</div>'
+                . '</div>'
+                . '<div class="card-divider"></div>'
+                . '<table class="invoice-table">'
+                . '<thead><tr><th>Product</th><th>Quantity</th><th>Price</th></tr></thead>'
+                . '<tbody>'
+                . $itemRowsHtml
+                . '<tr class="summary-row"><td></td><td class="summary-label">Delivery:</td><td class="right-cell">' . $this->escapePrintValue($deliveryText) . '</td></tr>'
+                . '<tr class="summary-row"><td></td><td class="summary-label">Discount(-):</td><td class="right-cell">' . $this->escapePrintValue($discountText) . '</td></tr>'
+                . '<tr class="summary-row total-row"><td></td><td class="summary-label"><strong>Total:</strong></td><td class="right-cell"><strong>' . $this->escapePrintValue($totalText) . '</strong></td></tr>'
+                . '</tbody>'
+                . '</table>'
+                . '</section>';
+        }
+
+        $html = '<!doctype html>'
+            . '<html lang="en">'
+            . '<head>'
+            . '<meta charset="utf-8" />'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1" />'
+            . '<title>Bulk Invoice Print</title>'
+            . '<style>'
+            . 'body{margin:0;background:#e4e6ea;font-family:Arial,sans-serif;color:#222;}'
+            . '.print-wrapper{max-width:1080px;margin:0 auto;padding:16px 12px 24px;}'
+            . '.toolbar{text-align:center;margin-bottom:12px;}'
+            . '.print-btn{border:0;background:#1f9d55;color:#fff;padding:6px 14px;border-radius:4px;font-size:14px;font-weight:600;cursor:pointer;}'
+            . '.print-card{background:#fff;border:1px solid #d7d9dd;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.05);margin-bottom:8px;overflow:hidden;page-break-inside:avoid;}'
+            . '.card-head{display:grid;grid-template-columns:1.2fr 1.6fr 1fr;gap:12px;padding:10px 10px 8px;}'
+            . '.head-col{min-height:72px;}'
+            . '.customer-line{margin:0 0 3px;font-size:13px;line-height:1.3;}'
+            . '.customer-name{font-weight:700;}'
+            . '.brand-col{text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;}'
+            . '.brand-logo{max-height:22px;width:auto;display:block;margin-bottom:4px;}'
+            . '.brand-line{margin:0;font-size:11px;line-height:1.25;}'
+            . '.invoice-col{text-align:right;}'
+            . '.invoice-title{margin:0 0 3px;font-size:22px;font-weight:700;}'
+            . '.invoice-meta{margin:0 0 2px;font-size:13px;line-height:1.3;}'
+            . '.card-divider{border-top:1px solid #e9b7b7;}'
+            . '.invoice-table{width:100%;border-collapse:collapse;}'
+            . '.invoice-table th,.invoice-table td{border:1px solid #d9dbe0;padding:6px 8px;font-size:12px;}'
+            . '.invoice-table thead th{background:#efefef;font-weight:700;text-align:center;}'
+            . '.product-cell{display:flex;align-items:center;gap:8px;}'
+            . '.product-thumb{width:16px;height:16px;object-fit:cover;border:1px solid #d3d3d3;flex-shrink:0;}'
+            . '.product-thumb.placeholder{display:inline-block;background:#f2f2f2;}'
+            . '.product-name{font-size:11px;line-height:1.35;}'
+            . '.product-meta{font-size:10px;color:#666;line-height:1.35;}'
+            . '.center-cell{text-align:center;white-space:nowrap;}'
+            . '.right-cell{text-align:right;white-space:nowrap;}'
+            . '.summary-row td:first-child{background:#fff;}'
+            . '.summary-label{font-size:12px;}'
+            . '.total-row td{font-weight:700;}'
+            . '@media (max-width:860px){.card-head{grid-template-columns:1fr;}.invoice-col{text-align:left;}.brand-col{align-items:flex-start;text-align:left;}}'
+            . '@media print{body{background:#fff;}.print-wrapper{max-width:100%;padding:0;}.no-print{display:none !important;}.print-card{box-shadow:none;border-color:#d1d5db;margin-bottom:8px;}}'
+            . '@page{margin:8mm;}'
+            . '</style>'
+            . '</head>'
+            . '<body>'
+            . '<main class="print-wrapper">'
+            . '<div class="toolbar no-print"><button type="button" class="print-btn" onclick="window.print()">Print</button></div>'
+            . $cardsHtml
+            . '</main>'
+            . '</body>'
+            . '</html>';
+
+        return response()->json([
+            'success' => true,
+            'view' => $html,
+        ]);
     }
 
     /**
@@ -1299,6 +1772,59 @@ class OrderController extends Controller
         return asset($normalized);
     }
 
+    private function escapePrintValue(mixed $value): string
+    {
+        return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
+    }
+
+    private function formatPrintDate(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '-';
+        }
+
+        try {
+            $date = $value instanceof Carbon ? $value : Carbon::parse((string) $value);
+            return $date->format('d-m-y');
+        } catch (Throwable $exception) {
+            return '-';
+        }
+    }
+
+    private function formatPrintMoney(mixed $value): string
+    {
+        $amount = (float) ($value ?? 0);
+        $rounded = round($amount, 2);
+        $fraction = abs($rounded - round($rounded));
+
+        $formatted = $fraction < 0.00001
+            ? number_format($rounded, 0, '.', '')
+            : rtrim(rtrim(number_format($rounded, 2, '.', ''), '0'), '.');
+
+        return $formatted . ' Tk';
+    }
+
+    private function formatPrintQuantity(float $value): string
+    {
+        return abs($value - round($value)) < 0.00001
+            ? (string) (int) round($value)
+            : rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
+    }
+
+    private function resolvePaymentMethodLabel(?string $paymentMethod): string
+    {
+        $normalized = strtolower(trim((string) $paymentMethod));
+        if ($normalized === '' || $normalized === 'null') {
+            return '-';
+        }
+
+        return match ($normalized) {
+            'cod', 'cash on delivery', 'cash_on_delivery' => 'Cash On Delivery',
+            'bkash' => 'bKash',
+            default => Str::title(str_replace(['_', '-'], ' ', $normalized)),
+        };
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1334,6 +1860,13 @@ class OrderController extends Controller
             ->filter()
             ->values()
             ->all();
+
+        if (!empty($items) && (int) ($order->discount ?? 0) > 0) {
+            $items = $this->applyDiscountToDropshippingItems(
+                $items,
+                (int) ($order->discount ?? 0)
+            );
+        }
 
         $payload = [
             'seller_code' => $sellerCode,
@@ -1877,6 +2410,191 @@ class OrderController extends Controller
         return (int) round(min($safeSubTotal, $safeDiscountValue));
     }
 
+    /**
+     * Recalculate persisted financial fields from current order line-items.
+     *
+     * @return array{sub_total:int,shipping_charge:int,discount:int,discount_type:string,discount_value:float,amount:int}
+     */
+    private function recalculateOrderFinancials(Order $order): array
+    {
+        $subTotal = $this->calculateOrderSubTotal((int) $order->id);
+        $shippingCharge = max(0, (int) ($order->shipping_charge ?? 0));
+
+        $discountType = strtolower(trim((string) ($order->discount_type ?? 'fixed')));
+        if (!in_array($discountType, ['fixed', 'percentage'], true)) {
+            $discountType = 'fixed';
+        }
+
+        $discountValue = $this->resolveDiscountValueFromOrder($order, $discountType, $subTotal);
+        $discountAmount = $this->calculateDiscountAmount($subTotal, $discountType, $discountValue);
+        $amount = max(0, $subTotal + $shippingCharge - $discountAmount);
+
+        $existingDiscountValue = (float) ($order->discount_value ?? 0);
+        $discountValueChanged = abs($existingDiscountValue - $discountValue) > 0.00001;
+
+        if (
+            (int) ($order->shipping_charge ?? 0) !== $shippingCharge
+            || (string) ($order->discount_type ?? '') !== $discountType
+            || $discountValueChanged
+            || (int) ($order->discount ?? 0) !== $discountAmount
+            || (int) ($order->amount ?? 0) !== $amount
+        ) {
+            $order->shipping_charge = $shippingCharge;
+            $order->discount_type = $discountType;
+            $order->discount_value = $discountValue;
+            $order->discount = $discountAmount;
+            $order->amount = $amount;
+            $order->save();
+        }
+
+        return [
+            'sub_total' => $subTotal,
+            'shipping_charge' => $shippingCharge,
+            'discount' => $discountAmount,
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
+            'amount' => $amount,
+        ];
+    }
+
+    private function resolveDiscountValueFromOrder(Order $order, string $discountType, int $subTotal): float
+    {
+        $storedDiscountAmount = max(0, (float) ($order->discount ?? 0));
+        $rawDiscountValue = $order->discount_value;
+        $hasDiscountValue = is_numeric($rawDiscountValue);
+
+        if ($discountType === 'percentage') {
+            if ($hasDiscountValue && (float) $rawDiscountValue > 0) {
+                return round(min(100, max(0, (float) $rawDiscountValue)), 2);
+            }
+
+            if ($subTotal > 0 && $storedDiscountAmount > 0) {
+                return round(min(100, ($storedDiscountAmount * 100) / $subTotal), 2);
+            }
+
+            return 0.0;
+        }
+
+        if ($hasDiscountValue && (float) $rawDiscountValue > 0) {
+            return round(max(0, (float) $rawDiscountValue), 2);
+        }
+
+        return round($storedDiscountAmount, 2);
+    }
+
+    /**
+     * Apply order-level discount to dropshipping item prices so item subtotal matches discounted order value.
+     *
+     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function applyDiscountToDropshippingItems(array $items, int $discountAmount): array
+    {
+        if (empty($items) || $discountAmount <= 0) {
+            return $items;
+        }
+
+        $normalizedItems = [];
+        $subTotalCents = 0;
+
+        foreach ($items as $index => $item) {
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $unitPrice = max(0, (float) ($item['price'] ?? 0));
+            $lineTotalCents = max(0, (int) round($unitPrice * $quantity * 100));
+
+            $normalizedItems[$index] = [
+                'item' => $item,
+                'quantity' => $quantity,
+                'line_total_cents' => $lineTotalCents,
+            ];
+
+            $subTotalCents += $lineTotalCents;
+        }
+
+        if ($subTotalCents <= 0) {
+            return $items;
+        }
+
+        $discountCents = min($subTotalCents, max(0, $discountAmount * 100));
+        if ($discountCents <= 0) {
+            return $items;
+        }
+
+        $lineDiscounts = [];
+        $fractionalRemainders = [];
+        $allocatedDiscount = 0;
+
+        foreach ($normalizedItems as $index => $normalizedItem) {
+            $lineTotalCents = $normalizedItem['line_total_cents'];
+            if ($lineTotalCents <= 0) {
+                $lineDiscounts[$index] = 0;
+                $fractionalRemainders[$index] = -1;
+                continue;
+            }
+
+            $exactDiscount = ($discountCents * $lineTotalCents) / $subTotalCents;
+            $baseDiscount = min($lineTotalCents, (int) floor($exactDiscount));
+
+            $lineDiscounts[$index] = $baseDiscount;
+            $fractionalRemainders[$index] = $exactDiscount - $baseDiscount;
+            $allocatedDiscount += $baseDiscount;
+        }
+
+        $remainingDiscount = max(0, $discountCents - $allocatedDiscount);
+        if ($remainingDiscount > 0) {
+            $indexes = array_keys($normalizedItems);
+            usort($indexes, function ($left, $right) use ($fractionalRemainders, $normalizedItems, $lineDiscounts) {
+                $leftCapacity = $normalizedItems[$left]['line_total_cents'] - ($lineDiscounts[$left] ?? 0);
+                $rightCapacity = $normalizedItems[$right]['line_total_cents'] - ($lineDiscounts[$right] ?? 0);
+
+                if ($leftCapacity <= 0 && $rightCapacity <= 0) {
+                    return 0;
+                }
+                if ($leftCapacity <= 0) {
+                    return 1;
+                }
+                if ($rightCapacity <= 0) {
+                    return -1;
+                }
+
+                return $fractionalRemainders[$right] <=> $fractionalRemainders[$left];
+            });
+
+            foreach ($indexes as $index) {
+                if ($remainingDiscount <= 0) {
+                    break;
+                }
+
+                $capacity = $normalizedItems[$index]['line_total_cents'] - ($lineDiscounts[$index] ?? 0);
+                if ($capacity <= 0) {
+                    continue;
+                }
+
+                $lineDiscounts[$index] = ($lineDiscounts[$index] ?? 0) + 1;
+                $remainingDiscount--;
+            }
+        }
+
+        $discountedItems = [];
+        foreach ($normalizedItems as $index => $normalizedItem) {
+            $lineDiscountCents = max(0, (int) ($lineDiscounts[$index] ?? 0));
+            $discountedLineTotalCents = max(
+                0,
+                $normalizedItem['line_total_cents'] - $lineDiscountCents
+            );
+            $quantity = $normalizedItem['quantity'];
+
+            $item = $normalizedItem['item'];
+            $item['price'] = $quantity > 0
+                ? round(($discountedLineTotalCents / $quantity) / 100, 4)
+                : 0;
+
+            $discountedItems[] = $item;
+        }
+
+        return $discountedItems;
+    }
+
     private function recordCourierDispatch(
         Order $order,
         string $courierName,
@@ -1977,6 +2695,26 @@ class OrderController extends Controller
                 $failedOrders[] = [
                     'order_id' => $orderId,
                     'message' => 'Order not found.',
+                ];
+                continue;
+            }
+
+            $this->recalculateOrderFinancials($order);
+
+            if ($this->isOrderAlreadyTakenByCourier($order)) {
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $this->buildOrderAlreadyTakenMessage($order),
+                ];
+                continue;
+            }
+
+            if (!$this->isCompletedOrderForCourierDispatch($order)) {
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => 'Only completed orders can be sent to Steadfast.',
                 ];
                 continue;
             }
@@ -2095,7 +2833,7 @@ class OrderController extends Controller
     {
         $candidate = trim($configuredUrl);
         if ($candidate === '') {
-            return self::PATHAO_DEFAULT_BASE_URL . self::PATHAO_CREATE_ORDER_PATH;
+            return $this->pathaoDefaultBaseUrl() . self::PATHAO_CREATE_ORDER_PATH;
         }
 
         if (preg_match('/\/aladdin\/api\/v1\/issue-token\/?$/i', $candidate)) {
@@ -2114,7 +2852,7 @@ class OrderController extends Controller
     {
         $candidate = trim($configuredUrl);
         if ($candidate === '') {
-            return self::PATHAO_DEFAULT_BASE_URL . self::PATHAO_ISSUE_TOKEN_PATH;
+            return $this->pathaoDefaultBaseUrl() . self::PATHAO_ISSUE_TOKEN_PATH;
         }
 
         if (preg_match('/\/issue-token\/?$/i', $candidate)) {
@@ -2137,22 +2875,13 @@ class OrderController extends Controller
             return $existingToken;
         }
 
-        $clientId = trim((string) ($pathao->client_id ?? ''));
-        $clientSecret = trim((string) ($pathao->client_secret ?? ''));
-        $username = trim((string) ($pathao->username ?? ''));
-        $password = trim((string) ($pathao->password ?? ''));
-
-        if ($clientId === '' || $clientSecret === '' || $username === '' || $password === '') {
-            throw ValidationException::withMessages([
-                'pathao' => ['Pathao credentials are incomplete. Configure client ID, client secret, username and password.'],
-            ]);
-        }
+        $credentials = $this->resolvePathaoCredentials($pathao);
 
         $tokenResponse = $this->requestPathaoToken(
-            $clientId,
-            $clientSecret,
-            $username,
-            $password,
+            $credentials['client_id'],
+            $credentials['client_secret'],
+            $credentials['username'],
+            $credentials['password'],
             trim((string) ($pathao->url ?? ''))
         );
 
@@ -2179,7 +2908,7 @@ class OrderController extends Controller
             ->post($endpoint, [
                 'client_id' => $clientId,
                 'client_secret' => $clientSecret,
-                'grant_type' => 'password',
+                'grant_type' => trim((string) config('services.pathao.grant_type', 'password')) ?: 'password',
                 'username' => $username,
                 'password' => $password,
             ]);
@@ -2191,14 +2920,22 @@ class OrderController extends Controller
             ]);
         }
 
-        $token = trim((string) $response->json('access_token', ''));
+        $token = trim((string) (
+            $response->json('access_token')
+            ?? $response->json('data.access_token')
+            ?? $response->json('result.access_token')
+            ?? ''
+        ));
         if ($token === '') {
             throw ValidationException::withMessages([
                 'pathao' => ['Pathao token response did not include an access token.'],
             ]);
         }
 
-        $expiresIn = (int) $response->json('expires_in', 0);
+        $expiresInRaw = $response->json('expires_in')
+            ?? $response->json('data.expires_in')
+            ?? $response->json('result.expires_in');
+        $expiresIn = is_numeric($expiresInRaw) ? (int) $expiresInRaw : 0;
         $expiresAt = $expiresIn > 0
             ? now()->addSeconds(max(60, $expiresIn))
             : now()->addHours(6);
@@ -2212,18 +2949,33 @@ class OrderController extends Controller
     /**
      * @param array<string, mixed> $payload
      */
-    private function dispatchPathaoOrderRequest(string $endpoint, string $token, array $payload): Response
+    private function dispatchPathaoOrderRequest(
+        string $endpoint,
+        string $token,
+        array $payload,
+        ?string $storeId = null
+    ): Response
     {
-        return Http::acceptJson()
+        $requestBuilder = Http::acceptJson()
             ->asJson()
-            ->withToken($token)
-            ->post($endpoint, $payload);
+            ->withToken($token);
+
+        $normalizedStoreId = trim((string) ($storeId ?? ''));
+        if ($normalizedStoreId !== '') {
+            $requestBuilder = $requestBuilder->withHeaders([
+                'X-Store-ID' => $normalizedStoreId,
+                'store-id' => $normalizedStoreId,
+            ]);
+        }
+
+        return $requestBuilder->post($endpoint, $payload);
     }
 
     /**
+     * @param array<string, mixed> $overrides
      * @return array<string, mixed>
      */
-    private function buildPathaoPayload(Order $order): array
+    private function buildPathaoPayload(Order $order, array $overrides = [], ?string $storeId = null): array
     {
         $shipping = $order->shipping;
         $customer = $order->customer;
@@ -2240,21 +2992,62 @@ class OrderController extends Controller
             ->take(3)
             ->join(', '));
 
-        return [
+        $recipientCity = $this->normalizePathaoLocationValue($overrides['recipient_city'] ?? null)
+            ?? $this->normalizePathaoLocationValue(config('services.pathao.default_city_id'))
+            ?? ($customerArea !== '' ? $customerArea : 'Dhaka');
+
+        $recipientZone = $this->normalizePathaoLocationValue($overrides['recipient_zone'] ?? null)
+            ?? $this->normalizePathaoLocationValue(config('services.pathao.default_zone_id'))
+            ?? ($customerArea !== '' ? $customerArea : 'Unknown');
+
+        $recipientArea = $this->normalizePathaoLocationValue($overrides['recipient_area'] ?? null)
+            ?? $this->normalizePathaoLocationValue(config('services.pathao.default_area_id'));
+
+        $deliveryType = (int) ($overrides['delivery_type'] ?? config('services.pathao.delivery_type', 48));
+        if ($deliveryType <= 0) {
+            $deliveryType = 48;
+        }
+
+        $itemType = (int) ($overrides['item_type'] ?? config('services.pathao.item_type', 2));
+        if ($itemType <= 0) {
+            $itemType = 2;
+        }
+
+        $itemWeight = isset($overrides['item_weight']) && is_numeric($overrides['item_weight'])
+            ? (float) $overrides['item_weight']
+            : max(
+                0.2,
+                round($itemQuantity * max(0.1, (float) config('services.pathao.weight_per_item', 0.2)), 2)
+            );
+
+        $payload = [
             'merchant_order_id' => (string) $order->invoice_id,
             'recipient_name' => $customerName !== '' ? $customerName : 'Customer',
             'recipient_phone' => $customerPhone !== '' ? $customerPhone : '00000000000',
             'recipient_address' => $customerAddress !== '' ? $customerAddress : 'Address not provided',
-            'recipient_city' => $customerArea !== '' ? $customerArea : 'Dhaka',
-            'recipient_zone' => $customerArea !== '' ? $customerArea : 'Unknown',
-            'delivery_type' => 48,
-            'item_type' => 2,
+            'recipient_city' => $recipientCity,
+            'recipient_zone' => $recipientZone,
+            'delivery_type' => $deliveryType,
+            'item_type' => $itemType,
             'special_instruction' => trim((string) ($order->note ?? '')),
             'item_quantity' => $itemQuantity,
-            'item_weight' => max(0.2, round($itemQuantity * 0.2, 2)),
+            'item_weight' => max(0.1, round($itemWeight, 2)),
             'item_description' => $itemDescription !== '' ? $itemDescription : 'Parcel',
             'amount_to_collect' => max(0, (float) ($order->amount ?? 0)),
         ];
+
+        if ($recipientArea !== null) {
+            $payload['recipient_area'] = $recipientArea;
+        }
+
+        $normalizedStoreId = trim((string) ($storeId ?? ''));
+        if ($normalizedStoreId !== '') {
+            $payload['store_id'] = is_numeric($normalizedStoreId)
+                ? (int) $normalizedStoreId
+                : $normalizedStoreId;
+        }
+
+        return $payload;
     }
 
     private function extractCourierOrderIdFromResponse(Response $response): ?string
@@ -2288,31 +3081,760 @@ class OrderController extends Controller
 
     private function resolveCourierErrorMessage(Response $response, string $fallback): string
     {
-        $message = $response->json('message');
-        if (is_string($message) && trim($message) !== '') {
-            return trim($message);
+        $message = trim((string) (
+            $response->json('message')
+            ?? $response->json('data.message')
+            ?? $response->json('result.message')
+            ?? ''
+        ));
+        $errors = $this->extractCourierApiErrors($response);
+
+        if (!empty($errors)) {
+            $combinedErrors = implode(' ', $errors);
+            if ($message === '' || $this->isGenericCourierErrorMessage($message)) {
+                return mb_substr($combinedErrors, 0, 350);
+            }
+
+            return mb_substr(trim($message . ' ' . $combinedErrors), 0, 350);
         }
 
-        $errors = $response->json('errors');
-        if (is_array($errors) && !empty($errors)) {
-            $flattened = collect($errors)
-                ->flatten()
-                ->map(fn ($item) => trim((string) $item))
-                ->filter()
-                ->values()
-                ->all();
-
-            if (!empty($flattened)) {
-                return implode(' ', $flattened);
-            }
+        if ($message !== '' && !$this->isGenericCourierErrorMessage($message)) {
+            return mb_substr($message, 0, 350);
         }
 
         $rawBody = trim((string) $response->body());
         if ($rawBody !== '') {
+            if ($message !== '' && !$this->isGenericCourierErrorMessage($message)) {
+                return mb_substr($message, 0, 350);
+            }
             return mb_substr($rawBody, 0, 350);
         }
 
-        return $fallback;
+        if ($message !== '') {
+            return mb_substr($message, 0, 350);
+        }
+
+        return mb_substr($fallback, 0, 350);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractCourierApiErrors(Response $response): array
+    {
+        $segments = [
+            $response->json('errors'),
+            $response->json('error'),
+            $response->json('data.errors'),
+            $response->json('data.error'),
+            $response->json('data.validation_errors'),
+            $response->json('result.error'),
+            $response->json('result.errors'),
+            $response->json('data.message'),
+            $response->json('result.message'),
+        ];
+
+        return collect($segments)
+            ->flatMap(fn ($segment) => $this->flattenCourierErrorSegment($segment))
+            ->map(fn ($item) => trim((string) $item))
+            ->filter(fn ($item) => $item !== '' && !$this->isGenericCourierErrorMessage($item))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function flattenCourierErrorSegment(mixed $segment, ?string $field = null): array
+    {
+        if ($segment === null || is_bool($segment)) {
+            return [];
+        }
+
+        if (is_numeric($segment)) {
+            return [];
+        }
+
+        if (is_string($segment)) {
+            $message = trim($segment);
+            if ($message === '' || $this->shouldIgnoreCourierErrorField($field)) {
+                return [];
+            }
+
+            if ($field !== null && trim($field) !== '' && !$this->isCourierErrorContainerKey($field)) {
+                return [
+                    sprintf('%s: %s', $this->formatCourierErrorField($field), $message),
+                ];
+            }
+
+            return [$message];
+        }
+
+        if (!is_array($segment) || empty($segment)) {
+            return [];
+        }
+
+        if (array_key_exists('field', $segment) && array_key_exists('message', $segment)) {
+            $fieldName = trim((string) ($segment['field'] ?? ''));
+            $fieldMessage = trim((string) ($segment['message'] ?? ''));
+
+            if ($fieldMessage !== '') {
+                if ($fieldName === '') {
+                    return [$fieldMessage];
+                }
+
+                return [
+                    sprintf('%s: %s', $this->formatCourierErrorField($fieldName), $fieldMessage),
+                ];
+            }
+        }
+
+        $messages = [];
+        foreach ($segment as $key => $value) {
+            $nextField = $field;
+            if (is_string($key) && trim($key) !== '' && !$this->isCourierErrorContainerKey($key)) {
+                $nextField = $key;
+            }
+
+            $messages = array_merge(
+                $messages,
+                $this->flattenCourierErrorSegment($value, $nextField)
+            );
+        }
+
+        return $messages;
+    }
+
+    private function isCourierErrorContainerKey(string $key): bool
+    {
+        return in_array(strtolower(trim($key)), [
+            'errors',
+            'error',
+            'messages',
+            'message',
+            'data',
+            'result',
+            'details',
+            'detail',
+            'validation_errors',
+        ], true);
+    }
+
+    private function shouldIgnoreCourierErrorField(?string $field): bool
+    {
+        if ($field === null) {
+            return false;
+        }
+
+        return in_array(strtolower(trim($field)), [
+            'success',
+            'status',
+            'status_code',
+            'http_code',
+            'code',
+            'error_code',
+            'type',
+        ], true);
+    }
+
+    private function formatCourierErrorField(string $field): string
+    {
+        return ucfirst(str_replace(['_', '-'], ' ', trim($field)));
+    }
+
+    private function isGenericCourierErrorMessage(string $message): bool
+    {
+        $normalized = strtolower(trim($message));
+        return in_array($normalized, [
+            'please fix the given errors',
+            'please fix the given error',
+            'validation failed',
+            'unprocessable entity',
+            'the given data was invalid.',
+            'error',
+        ], true);
+    }
+
+    private function isCompletedOrderForCourierDispatch(Order $order): bool
+    {
+        $statusValues = [
+            $order->order_status,
+            $this->getStatusName($order->order_status),
+        ];
+
+        foreach ($statusValues as $statusValue) {
+            if ($this->orderStatusService->canonicalKeyFromValue($statusValue) === 'complete') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isOrderAlreadyTakenByCourier(Order $order): bool
+    {
+        $courierOrderId = trim((string) ($order->courier_order_id ?? ''));
+        if ($courierOrderId !== '') {
+            return true;
+        }
+
+        $courierName = strtolower(trim((string) ($order->courier_name ?? '')));
+        $courierStatus = strtolower(trim((string) ($order->courier_status ?? '')));
+
+        if ($courierName === '') {
+            return false;
+        }
+
+        return in_array($courierStatus, [
+            'sent',
+            'booked',
+            'created',
+            'processing',
+            'in_transit',
+            'in-transit',
+            'pending_pickup',
+            'picked',
+        ], true);
+    }
+
+    private function buildOrderAlreadyTakenMessage(Order $order): string
+    {
+        $courierName = trim((string) ($order->courier_name ?? ''));
+        $courierOrderId = trim((string) ($order->courier_order_id ?? ''));
+
+        $message = 'Order already taken by courier.';
+        if ($courierName !== '') {
+            $message = 'Order already taken by ' . ucfirst($courierName) . '.';
+        }
+
+        if ($courierOrderId !== '') {
+            $message .= ' Tracking code: ' . $courierOrderId . '.';
+        }
+
+        return $message;
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function pathaoCredentialsFromEnvironment(): array
+    {
+        return [
+            'client_id' => trim((string) config('services.pathao.client_id', '')),
+            'client_secret' => trim((string) config('services.pathao.client_secret', '')),
+            'username' => trim((string) config('services.pathao.username', '')),
+            'password' => trim((string) config('services.pathao.password', '')),
+        ];
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function pathaoCredentialsFromCourier(Courierapi $pathao): array
+    {
+        return [
+            'client_id' => trim((string) ($pathao->client_id ?? '')),
+            'client_secret' => trim((string) ($pathao->client_secret ?? '')),
+            'username' => trim((string) ($pathao->username ?? '')),
+            'password' => trim((string) ($pathao->password ?? '')),
+        ];
+    }
+
+    /**
+     * @param array{client_id:string,client_secret:string,username:string,password:string} $credentials
+     */
+    private function pathaoCredentialsAreComplete(array $credentials): bool
+    {
+        return $credentials['client_id'] !== ''
+            && $credentials['client_secret'] !== ''
+            && $credentials['username'] !== ''
+            && $credentials['password'] !== '';
+    }
+
+    /**
+     * @return array{client_id:string,client_secret:string,username:string,password:string}
+     */
+    private function resolvePathaoCredentials(Courierapi $pathao): array
+    {
+        $storedCredentials = $this->pathaoCredentialsFromCourier($pathao);
+        if ($this->pathaoCredentialsAreComplete($storedCredentials)) {
+            return $storedCredentials;
+        }
+
+        $secureCredentials = $this->pathaoCredentialsFromEnvironment();
+        if ($this->pathaoCredentialsAreComplete($secureCredentials)) {
+            return $secureCredentials;
+        }
+
+        throw ValidationException::withMessages([
+            'pathao' => ['Pathao credentials are missing in backend configuration.'],
+        ]);
+    }
+
+    private function pathaoDefaultBaseUrl(): string
+    {
+        $configured = trim((string) config('services.pathao.base_url', ''));
+        if ($configured !== '') {
+            return rtrim($configured, '/');
+        }
+
+        return rtrim(self::PATHAO_DEFAULT_BASE_URL, '/');
+    }
+
+    private function normalizePathaoLocationValue(mixed $value): int|string|null
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (is_numeric($normalized)) {
+            return (int) $normalized;
+        }
+
+        return $normalized;
+    }
+
+    private function resolvePathaoStoreId(Courierapi $pathao, string $token, mixed $overrideStoreId = null): ?string
+    {
+        $candidates = [
+            $overrideStoreId,
+            config('services.pathao.store_id'),
+            $pathao->api_key ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = trim((string) ($candidate ?? ''));
+            if ($normalized !== '') {
+                return $normalized;
+            }
+        }
+
+        $resolvedFromApi = $this->fetchPathaoStoreIdFromApi($pathao, $token);
+        if ($resolvedFromApi !== null && trim((string) ($pathao->api_key ?? '')) === '') {
+            $pathao->api_key = $resolvedFromApi;
+            $pathao->save();
+        }
+
+        return $resolvedFromApi;
+    }
+
+    private function fetchPathaoStoreIdFromApi(Courierapi $pathao, string $token): ?string
+    {
+        try {
+            $stores = $this->fetchPathaoStoreOptionsFromApi($pathao, $token);
+            $firstStore = $stores[0]['id'] ?? null;
+            if ($firstStore === null) {
+                return null;
+            }
+
+            return trim((string) $firstStore) ?: null;
+        } catch (Throwable $exception) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<int, array{id:int|string,name:string}>
+     */
+    private function fetchPathaoStoreOptionsFromApi(Courierapi $pathao, string &$token): array
+    {
+        $response = $this->requestPathaoResourceWithFallback(
+            $pathao,
+            $token,
+            $this->resolvePathaoStoresEndpoints((string) ($pathao->url ?? ''))
+        );
+
+        if (!$response || !$response->successful()) {
+            throw ValidationException::withMessages([
+                'pathao' => [$response
+                    ? $this->resolveCourierErrorMessage($response, 'Unable to load Pathao stores.')
+                    : 'Unable to load Pathao stores.'],
+            ]);
+        }
+
+        $stores = $this->normalizePathaoOptionCollection(
+            $this->extractPathaoCollection($response->json()),
+            ['store_id', 'id'],
+            ['store_name', 'name', 'title']
+        );
+
+        if (!empty($stores)) {
+            return $stores;
+        }
+
+        $fallbackStoreId = $this->extractPathaoStoreIdFromResponse($response);
+        if ($fallbackStoreId !== null) {
+            return [[
+                'id' => $this->normalizePathaoLocationValue($fallbackStoreId),
+                'name' => 'Store ' . $fallbackStoreId,
+            ]];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, array{id:int|string,name:string}>
+     */
+    private function fetchPathaoCityOptionsFromApi(Courierapi $pathao, string &$token): array
+    {
+        $response = $this->requestPathaoResourceWithFallback(
+            $pathao,
+            $token,
+            $this->resolvePathaoCityEndpoints((string) ($pathao->url ?? ''))
+        );
+
+        if (!$response || !$response->successful()) {
+            throw ValidationException::withMessages([
+                'pathao' => [$response
+                    ? $this->resolveCourierErrorMessage($response, 'Unable to load Pathao cities.')
+                    : 'Unable to load Pathao cities.'],
+            ]);
+        }
+
+        $cities = $this->normalizePathaoOptionCollection(
+            $this->extractPathaoCollection($response->json()),
+            ['city_id', 'id'],
+            ['city_name', 'name']
+        );
+
+        if (!empty($cities)) {
+            return $cities;
+        }
+
+        throw ValidationException::withMessages([
+            'pathao' => ['Pathao city list is empty or invalid.'],
+        ]);
+    }
+
+    /**
+     * @return array<int, array{id:int|string,name:string}>
+     */
+    private function fetchPathaoZoneOptionsFromApi(Courierapi $pathao, string &$token, int $cityId): array
+    {
+        $response = $this->requestPathaoResourceWithFallback(
+            $pathao,
+            $token,
+            $this->resolvePathaoZoneEndpoints((string) ($pathao->url ?? ''), $cityId)
+        );
+
+        if (!$response || !$response->successful()) {
+            throw ValidationException::withMessages([
+                'pathao' => [$response
+                    ? $this->resolveCourierErrorMessage($response, 'Unable to load Pathao zones.')
+                    : 'Unable to load Pathao zones.'],
+            ]);
+        }
+
+        $zones = $this->normalizePathaoOptionCollection(
+            $this->extractPathaoCollection($response->json()),
+            ['zone_id', 'id'],
+            ['zone_name', 'name']
+        );
+
+        return $zones;
+    }
+
+    /**
+     * @return array<int, array{id:int|string,name:string}>
+     */
+    private function fetchPathaoAreaOptionsFromApi(Courierapi $pathao, string &$token, int $zoneId): array
+    {
+        $response = $this->requestPathaoResourceWithFallback(
+            $pathao,
+            $token,
+            $this->resolvePathaoAreaEndpoints((string) ($pathao->url ?? ''), $zoneId)
+        );
+
+        if (!$response || !$response->successful()) {
+            throw ValidationException::withMessages([
+                'pathao' => [$response
+                    ? $this->resolveCourierErrorMessage($response, 'Unable to load Pathao areas.')
+                    : 'Unable to load Pathao areas.'],
+            ]);
+        }
+
+        $areas = $this->normalizePathaoOptionCollection(
+            $this->extractPathaoCollection($response->json()),
+            ['area_id', 'id'],
+            ['area_name', 'name']
+        );
+
+        return $areas;
+    }
+
+    private function requestPathaoResourceWithFallback(Courierapi $pathao, string &$token, array $endpoints): ?Response
+    {
+        $lastResponse = null;
+        $normalizedEndpoints = array_values(array_unique(array_filter(array_map(
+            fn ($endpoint) => trim((string) $endpoint),
+            $endpoints
+        ))));
+
+        foreach ($normalizedEndpoints as $endpoint) {
+            try {
+                $response = Http::acceptJson()->withToken($token)->get($endpoint);
+
+                if ($response->status() === 401) {
+                    $token = $this->resolvePathaoAccessToken($pathao, true);
+                    $response = Http::acceptJson()->withToken($token)->get($endpoint);
+                }
+
+                if ($response->successful()) {
+                    return $response;
+                }
+
+                $lastResponse = $response;
+            } catch (Throwable $exception) {
+                continue;
+            }
+        }
+
+        return $lastResponse;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolvePathaoStoresEndpoints(string $configuredUrl = ''): array
+    {
+        $apiRoot = $this->pathaoApiRootFromConfiguredUrl($configuredUrl);
+
+        return [
+            $this->resolvePathaoStoresEndpoint($configuredUrl),
+            $apiRoot . '/stores',
+            $apiRoot . '/store',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolvePathaoCityEndpoints(string $configuredUrl = ''): array
+    {
+        $apiRoot = $this->pathaoApiRootFromConfiguredUrl($configuredUrl);
+
+        return [
+            $apiRoot . '/city-list',
+            $apiRoot . '/cities',
+            $apiRoot . '/city_list',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolvePathaoZoneEndpoints(string $configuredUrl, int $cityId): array
+    {
+        $apiRoot = $this->pathaoApiRootFromConfiguredUrl($configuredUrl);
+        $cityId = max(1, $cityId);
+
+        return [
+            $apiRoot . '/cities/' . $cityId . '/zone-list',
+            $apiRoot . '/cities/' . $cityId . '/zones',
+            $apiRoot . '/zones?city_id=' . $cityId,
+            $apiRoot . '/zone-list/' . $cityId,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolvePathaoAreaEndpoints(string $configuredUrl, int $zoneId): array
+    {
+        $apiRoot = $this->pathaoApiRootFromConfiguredUrl($configuredUrl);
+        $zoneId = max(1, $zoneId);
+
+        return [
+            $apiRoot . '/zones/' . $zoneId . '/area-list',
+            $apiRoot . '/zones/' . $zoneId . '/areas',
+            $apiRoot . '/areas?zone_id=' . $zoneId,
+            $apiRoot . '/area-list/' . $zoneId,
+        ];
+    }
+
+    private function resolvePathaoStoresEndpoint(string $configuredUrl = ''): string
+    {
+        $candidate = trim($configuredUrl);
+        if ($candidate === '') {
+            return $this->pathaoDefaultBaseUrl() . self::PATHAO_STORES_PATH;
+        }
+
+        if (preg_match('/\/issue-token\/?$/i', $candidate)) {
+            $candidate = preg_replace('/\/issue-token\/?$/i', '', $candidate) ?: $candidate;
+            return rtrim($candidate, '/') . '/stores';
+        }
+
+        if (preg_match('/\/orders\/?$/i', $candidate)) {
+            $candidate = preg_replace('/\/orders\/?$/i', '', $candidate) ?: $candidate;
+            return rtrim($candidate, '/') . '/stores';
+        }
+
+        if (preg_match('/\/stores\/?$/i', $candidate)) {
+            return rtrim($candidate, '/');
+        }
+
+        return rtrim($candidate, '/') . self::PATHAO_STORES_PATH;
+    }
+
+    private function pathaoApiRootFromConfiguredUrl(string $configuredUrl = ''): string
+    {
+        $candidate = trim($configuredUrl);
+        if ($candidate === '') {
+            return $this->pathaoDefaultBaseUrl() . '/aladdin/api/v1';
+        }
+
+        if (preg_match('/\/aladdin\/api\/v1/i', $candidate)) {
+            return rtrim((string) preg_replace('/\/aladdin\/api\/v1.*$/i', '/aladdin/api/v1', $candidate), '/');
+        }
+
+        return rtrim($candidate, '/') . '/aladdin/api/v1';
+    }
+
+    private function extractPathaoStoreIdFromResponse(Response $response): ?string
+    {
+        $body = $response->json();
+        $candidates = [
+            data_get($body, 'data.store_id'),
+            data_get($body, 'store_id'),
+            data_get($body, 'data.data.0.store_id'),
+            data_get($body, 'data.data.0.id'),
+            data_get($body, 'data.0.store_id'),
+            data_get($body, 'data.0.id'),
+            data_get($body, 'stores.0.store_id'),
+            data_get($body, 'stores.0.id'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === null) {
+                continue;
+            }
+
+            $normalized = trim((string) $candidate);
+            if ($normalized !== '') {
+                return $normalized;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function extractPathaoCollection(mixed $payload): array
+    {
+        if (!is_array($payload) || empty($payload)) {
+            return [];
+        }
+
+        $directPaths = [
+            'data.data',
+            'data.items',
+            'data.stores',
+            'data.cities',
+            'data.zones',
+            'data.areas',
+            'result.data',
+            'result.items',
+            'stores',
+            'cities',
+            'zones',
+            'areas',
+            'data',
+            'result',
+        ];
+
+        foreach ($directPaths as $path) {
+            $candidate = data_get($payload, $path);
+            if (is_array($candidate) && array_is_list($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $this->findFirstListInPathaoPayload($payload) ?? [];
+    }
+
+    /**
+     * @return array<int, mixed>|null
+     */
+    private function findFirstListInPathaoPayload(mixed $value): ?array
+    {
+        if (!is_array($value) || empty($value)) {
+            return null;
+        }
+
+        if (array_is_list($value)) {
+            return $value;
+        }
+
+        foreach ($value as $item) {
+            $found = $this->findFirstListInPathaoPayload($item);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, mixed> $items
+     * @param array<int, string> $idKeys
+     * @param array<int, string> $nameKeys
+     * @return array<int, array{id:int|string,name:string}>
+     */
+    private function normalizePathaoOptionCollection(array $items, array $idKeys, array $nameKeys): array
+    {
+        $normalized = [];
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $idValue = $this->normalizePathaoLocationValue($this->pickPathaoValue($item, $idKeys));
+            $nameValue = trim((string) $this->pickPathaoValue($item, $nameKeys));
+
+            if ($idValue === null || $nameValue === '') {
+                continue;
+            }
+
+            $normalized[(string) $idValue] = [
+                'id' => $idValue,
+                'name' => $nameValue,
+            ];
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @param array<int, string> $keys
+     */
+    private function pickPathaoValue(array $item, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            $candidate = data_get($item, $key);
+            if ($candidate === null) {
+                continue;
+            }
+
+            if (is_string($candidate) && trim($candidate) === '') {
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return null;
     }
 
     private function fetchPathaoStatus(Order $order, Courierapi $pathao): ?string
@@ -2353,7 +3875,7 @@ class OrderController extends Controller
     {
         $candidate = trim($configuredUrl);
         if ($candidate === '') {
-            return rtrim(self::PATHAO_DEFAULT_BASE_URL, '/') . '/aladdin/api/v1/orders/' . rawurlencode($courierOrderId);
+            return rtrim($this->pathaoDefaultBaseUrl(), '/') . '/aladdin/api/v1/orders/' . rawurlencode($courierOrderId);
         }
 
         if (str_contains($candidate, '%s')) {

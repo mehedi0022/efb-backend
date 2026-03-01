@@ -9,17 +9,47 @@ use Illuminate\Support\Facades\DB;
 class OrderStatusService
 {
     /**
-     * @var array<int, array{id:int, name:string, slug:string}>
+     * Canonical order statuses allowed in the system.
+     *
+     * @var array<string, array{id:int, name:string, slug:string, aliases:array<int,string>}>
      */
     private const DEFAULT_STATUSES = [
-        ['id' => 1, 'name' => 'Pending', 'slug' => 'pending'],
-        ['id' => 2, 'name' => 'Processing', 'slug' => 'processing'],
-        ['id' => 3, 'name' => 'Confirmed', 'slug' => 'confirmed'],
-        ['id' => 4, 'name' => 'Delivered', 'slug' => 'delivered'],
-        ['id' => 5, 'name' => 'Cancelled', 'slug' => 'cancelled'],
-        ['id' => 6, 'name' => 'Complete', 'slug' => 'complete'],
-        ['id' => 7, 'name' => 'Returned', 'slug' => 'returned'],
-        ['id' => 8, 'name' => 'Hold', 'slug' => 'hold'],
+        'new_order' => [
+            'id' => 1,
+            'name' => 'New Order',
+            'slug' => 'pending',
+            'aliases' => ['new-order', 'new-orders', 'new', 'pending', '1'],
+        ],
+        'complete' => [
+            'id' => 6,
+            'name' => 'Complete',
+            'slug' => 'complete',
+            'aliases' => ['complete', 'completed', 'complete-order', 'complete-orders', '6'],
+        ],
+        'no_response' => [
+            'id' => 9,
+            'name' => 'No Response',
+            'slug' => 'no-response',
+            'aliases' => ['no-response', 'no-response-order', 'no-response-orders', '9', 'noresponse'],
+        ],
+        'hold' => [
+            'id' => 8,
+            'name' => 'Hold',
+            'slug' => 'hold',
+            'aliases' => ['hold', 'hold-order', 'hold-orders', '8', 'on-hold'],
+        ],
+        'cancel' => [
+            'id' => 5,
+            'name' => 'Cancel',
+            'slug' => 'cancel',
+            'aliases' => ['cancel', 'cancel-order', 'cancel-orders', 'cancelled', 'canceled', '5'],
+        ],
+        'fb_sent' => [
+            'id' => 10,
+            'name' => 'FB Sent',
+            'slug' => 'fb-sent',
+            'aliases' => ['fb-sent', 'fb_sent', 'fbsent', '10'],
+        ],
     ];
 
     /**
@@ -31,6 +61,7 @@ class OrderStatusService
             /** @var OrderStatus|null $status */
             $status = OrderStatus::query()
                 ->whereRaw('LOWER(slug) = ?', [$definition['slug']])
+                ->orWhere('id', (int) $definition['id'])
                 ->first();
 
             if (!$status) {
@@ -49,23 +80,35 @@ class OrderStatusService
                 continue;
             }
 
-            $updates = [];
-            if (trim((string) $status->name) === '') {
-                $updates['name'] = $definition['name'];
-            }
-            if (trim((string) $status->slug) === '') {
-                $updates['slug'] = $definition['slug'];
-            }
-            if ($status->status === null || trim((string) $status->status) === '') {
-                $updates['status'] = '1';
+            $updates = [
+                'name' => $definition['name'],
+                'slug' => $definition['slug'],
+                'status' => '1',
+            ];
+
+            if ((int) $status->id !== (int) $definition['id']) {
+                $targetId = (int) $definition['id'];
+                if (!OrderStatus::query()->where('id', $targetId)->exists()) {
+                    $updates['id'] = $targetId;
+                }
             }
 
-            if (!empty($updates)) {
-                $status->fill($updates)->save();
-            }
+            $status->fill($updates)->save();
         }
 
-        return OrderStatus::query()->orderBy('id')->get();
+        $allowedIds = collect(self::DEFAULT_STATUSES)
+            ->map(fn (array $status) => (int) $status['id'])
+            ->values()
+            ->all();
+
+        OrderStatus::query()
+            ->whereNotIn('id', $allowedIds)
+            ->delete();
+
+        return OrderStatus::query()
+            ->whereIn('id', $allowedIds)
+            ->orderBy('id')
+            ->get();
     }
 
     public function normalizeSlug(string $value): string
@@ -77,21 +120,34 @@ class OrderStatusService
         return trim($normalized, '-');
     }
 
+    /**
+     * @return array<int, string>
+     */
+    public function supportedCanonicalKeys(): array
+    {
+        return array_keys(self::DEFAULT_STATUSES);
+    }
+
+    public function canonicalLabel(string $canonicalKey): string
+    {
+        return self::DEFAULT_STATUSES[$canonicalKey]['name'] ?? 'Unknown';
+    }
+
     public function canonicalKeyFromValue(mixed $value): ?string
     {
         $normalized = $this->normalizeSlug((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
 
-        return match ($normalized) {
-            '1', 'pending' => 'pending',
-            '2', 'processing' => 'processing',
-            '3', 'confirmed' => 'confirmed',
-            '4', 'delivered' => 'delivered',
-            '5', 'cancelled', 'canceled' => 'cancelled',
-            '6', 'complete', 'completed' => 'complete',
-            '7', 'return', 'returned' => 'returned',
-            '8', 'hold', 'on-hold', 'ship-later', 'ready-to-delivery' => 'hold',
-            default => null,
-        };
+        foreach (self::DEFAULT_STATUSES as $canonicalKey => $definition) {
+            $aliases = $this->normalizeAliasesForDefinition($definition);
+            if (in_array($normalized, $aliases, true)) {
+                return $canonicalKey;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -99,17 +155,12 @@ class OrderStatusService
      */
     public function aliasesForCanonicalKey(string $canonicalKey): array
     {
-        return match ($canonicalKey) {
-            'pending' => ['pending', '1'],
-            'processing' => ['processing', '2'],
-            'confirmed' => ['confirmed', '3'],
-            'delivered' => ['delivered', '4'],
-            'cancelled' => ['cancelled', 'canceled', '5'],
-            'complete' => ['complete', 'completed', '6'],
-            'returned' => ['returned', 'return', '7'],
-            'hold' => ['hold', 'on-hold', 'ship-later', 'ready-to-delivery', '8'],
-            default => [$canonicalKey],
-        };
+        $definition = self::DEFAULT_STATUSES[$canonicalKey] ?? null;
+        if (!$definition) {
+            return [$this->normalizeSlug($canonicalKey)];
+        }
+
+        return $this->normalizeAliasesForDefinition($definition);
     }
 
     /**
@@ -134,10 +185,8 @@ class OrderStatusService
             return $ids;
         }
 
-        $fallback = collect(self::DEFAULT_STATUSES)
-            ->first(fn (array $status) => $status['slug'] === $canonicalKey);
-
-        return $fallback ? [(int) $fallback['id']] : [];
+        $definition = self::DEFAULT_STATUSES[$canonicalKey] ?? null;
+        return $definition ? [(int) $definition['id']] : [];
     }
 
     public function resolveStatusId(mixed $value, bool $ensureDefaults = true): ?int
@@ -237,12 +286,7 @@ class OrderStatusService
 
         $canonical = $this->canonicalKeyFromValue($value);
         if ($canonical) {
-            $definition = collect(self::DEFAULT_STATUSES)
-                ->first(fn (array $status) => $status['slug'] === $canonical);
-
-            if ($definition) {
-                return $definition['name'];
-            }
+            return self::DEFAULT_STATUSES[$canonical]['name'] ?? 'Unknown';
         }
 
         $clean = trim((string) $value);
@@ -255,6 +299,27 @@ class OrderStatusService
 
     public function isCancelledValue(mixed $value): bool
     {
-        return $this->canonicalKeyFromValue($value) === 'cancelled';
+        return $this->canonicalKeyFromValue($value) === 'cancel';
+    }
+
+    /**
+     * @param array{id:int,name:string,slug:string,aliases:array<int,string>} $definition
+     * @return array<int, string>
+     */
+    private function normalizeAliasesForDefinition(array $definition): array
+    {
+        $aliases = [
+            (string) $definition['id'],
+            (string) $definition['slug'],
+            (string) $definition['name'],
+            ...($definition['aliases'] ?? []),
+        ];
+
+        return collect($aliases)
+            ->map(fn ($value) => $this->normalizeSlug((string) $value))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 }

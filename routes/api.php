@@ -116,6 +116,9 @@ Route::prefix('admin')->group(function () {
             Route::get('/statistics/all', [OrderController::class, 'statistics'])->middleware('admin.permission:orders.view');
             Route::post('/courier/steadfast', [OrderController::class, 'sendToSteadfast'])->middleware('admin.permission:orders.edit');
             Route::post('/send-dropshipping', [OrderController::class, 'sendToSteadfast'])->middleware('admin.permission:orders.edit');
+            Route::get('/courier/pathao/meta', [OrderController::class, 'pathaoMeta'])->middleware('admin.permission:orders.edit');
+            Route::get('/courier/pathao/zones', [OrderController::class, 'pathaoZones'])->middleware('admin.permission:orders.edit');
+            Route::get('/courier/pathao/areas', [OrderController::class, 'pathaoAreas'])->middleware('admin.permission:orders.edit');
             Route::post('/courier/pathao', [OrderController::class, 'sendToPathao'])->middleware('admin.permission:orders.edit');
             Route::post('/courier/sync-status', [OrderController::class, 'syncCourierStatus'])->middleware('admin.permission:orders.edit');
             Route::post('/print', [OrderController::class, 'printOrders'])->middleware('admin.permission:orders.view');

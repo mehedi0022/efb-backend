@@ -6,15 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\OrderStatusService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    private const DEFAULT_HOURLY_WINDOW = 12;
+    private const DEFAULT_HOURLY_WINDOW = 24;
     private const MAX_HOURLY_WINDOW = 48;
     private const DEFAULT_MONTHLY_WINDOW = 12;
+
+    public function __construct(private readonly OrderStatusService $orderStatusService)
+    {
+    }
 
     /**
      * Get dashboard statistics
@@ -24,16 +29,17 @@ class DashboardController extends Controller
         try {
             $windowHours = (int) $request->query('hours', self::DEFAULT_HOURLY_WINDOW);
             $windowHours = max(1, min(self::MAX_HOURLY_WINDOW, $windowHours));
+            $this->orderStatusService->ensureDefaultStatuses();
 
             $statusBreakdown = $this->buildOrderStatusBreakdown();
             $totalOrderStats = $this->sumStatusBuckets($statusBreakdown, array_keys($statusBreakdown));
-            $activeOrderStats = $this->sumStatusBuckets($statusBreakdown, ['pending', 'processing', 'confirmed', 'hold']);
-            $completedOrderStats = $this->sumStatusBuckets($statusBreakdown, ['completed', 'delivered']);
-            $deliveredOrderStats = $this->sumStatusBuckets($statusBreakdown, ['delivered']);
-            $cancelledOrderStats = $this->sumStatusBuckets($statusBreakdown, ['cancelled']);
-            $returnedOrderStats = $this->sumStatusBuckets($statusBreakdown, ['returned']);
+            $activeOrderStats = $this->sumStatusBuckets($statusBreakdown, ['new_order', 'no_response', 'hold']);
+            $completedOrderStats = $this->sumStatusBuckets($statusBreakdown, ['complete', 'fb_sent']);
+            $newOrderStats = $this->sumStatusBuckets($statusBreakdown, ['new_order']);
+            $noResponseOrderStats = $this->sumStatusBuckets($statusBreakdown, ['no_response']);
             $holdOrderStats = $this->sumStatusBuckets($statusBreakdown, ['hold']);
-            $confirmedOrderStats = $this->sumStatusBuckets($statusBreakdown, ['confirmed']);
+            $cancelledOrderStats = $this->sumStatusBuckets($statusBreakdown, ['cancel']);
+            $inCourierOrderStats = $this->sumStatusBuckets($statusBreakdown, ['fb_sent']);
 
             return response()->json([
                 'success' => true,
@@ -42,11 +48,11 @@ class DashboardController extends Controller
                     'total_order' => $totalOrderStats,
                     'active_order' => $activeOrderStats,
                     'completed_order' => $completedOrderStats,
-                    'delivered_order' => $deliveredOrderStats,
-                    'cancelled_order' => $cancelledOrderStats,
-                    'returned_order' => $returnedOrderStats,
+                    'new_order' => $newOrderStats,
+                    'no_response_order' => $noResponseOrderStats,
                     'hold_order' => $holdOrderStats,
-                    'confirmed_order' => $confirmedOrderStats,
+                    'cancelled_order' => $cancelledOrderStats,
+                    'in_courier_order' => $inCourierOrderStats,
                     'today_order' => $this->getTodayOrderStats(),
                     'total_product' => Product::count(),
                     'total_customer' => Customer::count(),
@@ -111,9 +117,6 @@ class DashboardController extends Controller
 
         foreach ($rows as $row) {
             $bucketKey = $this->normalizeOrderStatus((string) $row->raw_status);
-            if (!array_key_exists($bucketKey, $buckets)) {
-                $bucketKey = 'other';
-            }
 
             $buckets[$bucketKey]['count'] += (int) $row->order_count;
             $buckets[$bucketKey]['amount'] += (int) $row->total_amount;
@@ -124,43 +127,27 @@ class DashboardController extends Controller
 
     private function statusBucketsTemplate(): array
     {
-        return [
-            'pending' => ['label' => 'Pending', 'count' => 0, 'amount' => 0],
-            'processing' => ['label' => 'Processing', 'count' => 0, 'amount' => 0],
-            'confirmed' => ['label' => 'Confirmed', 'count' => 0, 'amount' => 0],
-            'delivered' => ['label' => 'Delivered', 'count' => 0, 'amount' => 0],
-            'completed' => ['label' => 'Completed', 'count' => 0, 'amount' => 0],
-            'cancelled' => ['label' => 'Cancelled', 'count' => 0, 'amount' => 0],
-            'returned' => ['label' => 'Returned', 'count' => 0, 'amount' => 0],
-            'hold' => ['label' => 'Hold', 'count' => 0, 'amount' => 0],
-            'other' => ['label' => 'Other', 'count' => 0, 'amount' => 0],
-        ];
+        $buckets = [];
+
+        foreach ($this->orderStatusService->supportedCanonicalKeys() as $canonicalKey) {
+            $buckets[$canonicalKey] = [
+                'label' => $this->orderStatusService->canonicalLabel($canonicalKey),
+                'count' => 0,
+                'amount' => 0,
+            ];
+        }
+
+        return $buckets;
     }
 
     private function normalizeOrderStatus(string $status): string
     {
-        $normalized = strtolower(trim($status));
-        $normalized = str_replace(['_', '-'], ' ', $normalized);
-        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
-
-        return match ($normalized) {
-            '1', 'pending' => 'pending',
-            '2', 'processing' => 'processing',
-            '3', 'confirmed' => 'confirmed',
-            '4', 'delivered' => 'delivered',
-            '5', 'cancelled', 'canceled' => 'cancelled',
-            '6', 'complete', 'completed' => 'completed',
-            '7', 'return', 'returned' => 'returned',
-            'hold', 'on hold', 'ship later', 'ready to delivery' => 'hold',
-            default => 'other',
-        };
+        return $this->orderStatusService->canonicalKeyFromValue($status) ?? 'new_order';
     }
 
     private function statusLabelForKey(string $statusKey): string
     {
-        $template = $this->statusBucketsTemplate();
-
-        return $template[$statusKey]['label'] ?? 'Other';
+        return $this->orderStatusService->canonicalLabel($statusKey);
     }
 
     private function sumStatusBuckets(array $buckets, array $keys): array
