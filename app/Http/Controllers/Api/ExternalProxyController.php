@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class ExternalProxyController extends Controller
 {
@@ -17,33 +18,163 @@ class ExternalProxyController extends Controller
         return rtrim($base !== '' ? $base : 'https://api.freelancerbangladesh.com', '/');
     }
 
-    private function normalizeDomain(string $appUrl): string
+    private function extractHost(string $value): string
     {
-        $host = parse_url($appUrl, PHP_URL_HOST);
-        if (!$host) {
-            $host = preg_replace('#^https?://#i', '', $appUrl);
-            $host = preg_replace('#/.*$#', '', $host);
+        $value = trim($value);
+        if ($value === '') {
+            return '';
         }
 
-        $host = strtolower($host);
+        $host = parse_url($value, PHP_URL_HOST);
+        if (!$host) {
+            $host = preg_replace('#^https?://#i', '', $value);
+            $host = preg_replace('#/.*$#', '', (string) $host);
+        }
+
+        return strtolower((string) $host);
+    }
+
+    private function normalizeDomain(string $appUrl): string
+    {
+        $host = $this->extractHost($appUrl);
+        if ($host === '') {
+            return 'www.freelancerbangladesh.com';
+        }
+
         $host = preg_replace('#^www\.#i', '', $host);
 
         return 'www.' . $host;
     }
 
-    private function request(string $endpoint, array $params = [])
+    private function domainCandidates(?Request $request = null): array
     {
-        $response = Http::timeout(15)->connectTimeout(5)->get($endpoint, $params);
+        $hosts = [];
 
-        if ($response->successful()) {
-            return response()->json($response->json(), $response->status());
+        $configuredHost = $this->extractHost((string) config('app.url', ''));
+        if ($configuredHost !== '') {
+            $hosts[] = $configuredHost;
+        }
+
+        if ($request !== null) {
+            $requestHost = $this->extractHost((string) $request->getHost());
+            if ($requestHost !== '') {
+                $hosts[] = $requestHost;
+            }
+        }
+
+        if (empty($hosts)) {
+            return ['www.freelancerbangladesh.com', 'freelancerbangladesh.com'];
+        }
+
+        $domains = [];
+        foreach (array_unique($hosts) as $host) {
+            $base = preg_replace('#^www\.#i', '', $host);
+            if ($base === '') {
+                continue;
+            }
+            $domains[] = 'www.' . $base;
+            $domains[] = $base;
+        }
+
+        return array_values(array_unique(array_filter($domains)));
+    }
+
+    private function normalizeProductSlug(string $slug): string
+    {
+        $value = trim($slug);
+        if ($value === '') {
+            return '';
+        }
+
+        $pathFromUrl = parse_url($value, PHP_URL_PATH);
+        if (is_string($pathFromUrl) && $pathFromUrl !== '') {
+            $value = $pathFromUrl;
+        }
+
+        $value = trim($value);
+        $value = explode('?', $value)[0];
+        $value = explode('#', $value)[0];
+        $value = trim($value, '/');
+
+        if ($value === '') {
+            return '';
+        }
+
+        $segments = array_values(array_filter(explode('/', $value), static fn ($segment) => trim($segment) !== ''));
+        if (empty($segments)) {
+            return '';
+        }
+
+        return trim((string) end($segments));
+    }
+
+    private function productSlugCandidates(string $slug): array
+    {
+        $raw = trim($slug);
+        if ($raw === '') {
+            return [];
+        }
+
+        $decoded = rawurldecode($raw);
+        $normalizedRaw = $this->normalizeProductSlug($raw);
+        $normalizedDecoded = $this->normalizeProductSlug($decoded);
+
+        $candidates = [
+            $normalizedRaw,
+            $normalizedDecoded,
+        ];
+
+        if ($normalizedRaw !== '') {
+            $candidates[] = rawurlencode($normalizedRaw);
+        }
+
+        if ($normalizedDecoded !== '') {
+            $candidates[] = rawurlencode($normalizedDecoded);
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
+    }
+
+    private function request(string|array $endpoints, array $params = [])
+    {
+        $endpointList = is_array($endpoints)
+            ? array_values(array_unique(array_filter(array_map(static fn ($endpoint) => trim((string) $endpoint), $endpoints))))
+            : [trim($endpoints)];
+
+        $lastResponseStatus = null;
+
+        foreach ($endpointList as $endpoint) {
+            if ($endpoint === '') {
+                continue;
+            }
+
+            try {
+                $response = Http::timeout(15)->connectTimeout(5)->get($endpoint, $params);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($response->successful()) {
+                return response()->json($response->json(), $response->status());
+            }
+
+            $lastResponseStatus = $response->status();
+
+            // Fallback attempts are only useful for not-found variants.
+            if ($response->status() !== 404) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'External API request failed.',
+                    'status' => $response->status(),
+                ], $response->status() ?: 502);
+            }
         }
 
         return response()->json([
             'success' => false,
             'message' => 'External API request failed.',
-            'status' => $response->status(),
-        ], $response->status() ?: 502);
+            'status' => $lastResponseStatus ?? 404,
+        ], $lastResponseStatus ?: 502);
     }
 
     public function featuredCategories(Request $request)
@@ -113,12 +244,26 @@ class ExternalProxyController extends Controller
         return $this->request($endpoint, $params);
     }
 
-    public function productDetails(string $slug)
+    public function productDetails(Request $request, string $slug)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/products/slug/{$domain}/{$slug}";
+        $slugCandidates = $this->productSlugCandidates($slug);
+        if (empty($slugCandidates)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'External API request failed.',
+                'status' => 404,
+            ], 404);
+        }
 
-        return $this->request($endpoint);
+        $domains = $this->domainCandidates($request);
+        $endpoints = [];
+        foreach ($domains as $domain) {
+            foreach ($slugCandidates as $candidateSlug) {
+                $endpoints[] = $this->baseUrl() . "/products/slug/{$domain}/{$candidateSlug}";
+            }
+        }
+
+        return $this->request($endpoints);
     }
 
     public function categoryProductsBySlug(Request $request, string $slug)
