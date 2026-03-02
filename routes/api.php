@@ -300,6 +300,7 @@ Route::prefix('admin')->group(function () {
             Route::get('/{id}', [UserController::class, 'show'])->middleware('admin.permission:users.view');
             Route::post('/', [UserController::class, 'store'])->middleware('admin.permission:users.create');
             Route::put('/{id}', [UserController::class, 'update'])->middleware('admin.permission:users.edit');
+            Route::put('/{id}/seller-code', [UserController::class, 'upsertSellerCode'])->middleware('admin.permission:users.edit');
             Route::delete('/{id}', [UserController::class, 'destroy'])->middleware('admin.permission:users.delete');
         });
 

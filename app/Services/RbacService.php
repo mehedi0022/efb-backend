@@ -100,6 +100,7 @@ class RbacService
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'seller_code' => $user->seller_code,
             'image' => $user->image ?? null,
             'roles' => $roleNames,
             'role_ids' => $user->roles->pluck('id')->map(fn ($id) => (int) $id)->values(),

@@ -167,4 +167,52 @@ class UserController extends Controller
             'message' => 'Employee deleted successfully.',
         ]);
     }
+
+    public function upsertSellerCode(Request $request, int $id)
+    {
+        $user = User::query()
+            ->with(['roles:id,name', 'permissions:id,name'])
+            ->findOrFail($id);
+
+        if (!$user->hasRole('super-admin')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller code can only be managed for Super Admin users.',
+            ], 422);
+        }
+
+        $validated = $request->validate(
+            [
+                'seller_code' => ['required', 'string', 'max:120', 'regex:/\\S/'],
+                'security_code' => ['nullable', 'string', 'max:120'],
+            ],
+            [
+                'seller_code.regex' => 'Seller code is required.',
+            ]
+        );
+
+        $hasExistingSellerCode = filled($user->seller_code);
+        if ($hasExistingSellerCode) {
+            $securityCode = trim((string) ($validated['security_code'] ?? ''));
+            if (!hash_equals('forgotcode', $securityCode)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid security code.',
+                ], 422);
+            }
+        }
+
+        $user->seller_code = trim((string) $validated['seller_code']);
+        $user->save();
+        $user->refresh();
+        $user->loadMissing(['roles:id,name', 'permissions:id,name']);
+
+        return response()->json([
+            'success' => true,
+            'message' => $hasExistingSellerCode
+                ? 'Seller code updated successfully.'
+                : 'Seller code added successfully.',
+            'data' => $this->rbacService->userData($user),
+        ]);
+    }
 }
