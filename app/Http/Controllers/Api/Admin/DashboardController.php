@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Services\OrderStatusService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -29,9 +30,10 @@ class DashboardController extends Controller
         try {
             $windowHours = (int) $request->query('hours', self::DEFAULT_HOURLY_WINDOW);
             $windowHours = max(1, min(self::MAX_HOURLY_WINDOW, $windowHours));
+            $dateRange = $this->resolveOrderDateRange($request);
             $this->orderStatusService->ensureDefaultStatuses();
 
-            $statusBreakdown = $this->buildOrderStatusBreakdown();
+            $statusBreakdown = $this->buildOrderStatusBreakdown($dateRange);
             $totalOrderStats = $this->sumStatusBuckets($statusBreakdown, array_keys($statusBreakdown));
             $activeOrderStats = $this->sumStatusBuckets($statusBreakdown, ['new_order', 'no_response', 'hold']);
             $completedOrderStats = $this->sumStatusBuckets($statusBreakdown, ['complete', 'fb_sent']);
@@ -40,10 +42,18 @@ class DashboardController extends Controller
             $holdOrderStats = $this->sumStatusBuckets($statusBreakdown, ['hold']);
             $cancelledOrderStats = $this->sumStatusBuckets($statusBreakdown, ['cancel']);
             $inCourierOrderStats = $this->sumStatusBuckets($statusBreakdown, ['fb_sent']);
+            $latestOrdersQuery = Order::with(['customer:id,name,phone', 'orderdetails:id,order_id,image'])
+                ->latest();
+
+            $this->applyDateRangeToOrderQuery($latestOrdersQuery, $dateRange);
 
             return response()->json([
                 'success' => true,
                 'generated_at' => Carbon::now()->toIso8601String(),
+                'filters' => [
+                    'start_date' => $dateRange['start_date'],
+                    'end_date' => $dateRange['end_date'],
+                ],
                 'stats' => [
                     'total_order' => $totalOrderStats,
                     'active_order' => $activeOrderStats,
@@ -53,7 +63,7 @@ class DashboardController extends Controller
                     'hold_order' => $holdOrderStats,
                     'cancelled_order' => $cancelledOrderStats,
                     'in_courier_order' => $inCourierOrderStats,
-                    'today_order' => $this->getTodayOrderStats(),
+                    'today_order' => $this->getTodayOrderStats($dateRange),
                     'total_product' => Product::count(),
                     'total_customer' => Customer::count(),
                 ],
@@ -67,10 +77,9 @@ class DashboardController extends Controller
                         ];
                     })
                     ->values(),
-                'hourly_orders' => $this->buildHourlyOrderAnalytics($windowHours),
-                'monthly_orders' => $this->buildMonthlyOrderAnalytics(self::DEFAULT_MONTHLY_WINDOW),
-                'latest_orders' => Order::with(['customer:id,name,phone', 'orderdetails:id,order_id,image'])
-                    ->latest()
+                'hourly_orders' => $this->buildHourlyOrderAnalytics($windowHours, $dateRange),
+                'monthly_orders' => $this->buildMonthlyOrderAnalytics(self::DEFAULT_MONTHLY_WINDOW, $dateRange),
+                'latest_orders' => $latestOrdersQuery
                     ->limit(50)
                     ->get()
                     ->map(function ($order) {
@@ -104,14 +113,18 @@ class DashboardController extends Controller
         }
     }
 
-    private function buildOrderStatusBreakdown(): array
+    private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
         $buckets = $this->statusBucketsTemplate();
 
-        $rows = Order::query()
+        $query = Order::query()
             ->selectRaw("LOWER(TRIM(COALESCE(order_status, ''))) as raw_status")
             ->selectRaw('COUNT(*) as order_count')
-            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount');
+
+        $this->applyDateRangeToOrderQuery($query, $dateRange);
+
+        $rows = $query
             ->groupByRaw("LOWER(TRIM(COALESCE(order_status, '')))")
             ->get();
 
@@ -170,13 +183,16 @@ class DashboardController extends Controller
         ];
     }
 
-    private function getTodayOrderStats(): array
+    private function getTodayOrderStats(array $dateRange = []): array
     {
-        $today = Order::query()
+        $query = Order::query()
             ->selectRaw('COUNT(*) as order_count')
             ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
-            ->where('created_at', '>=', Carbon::today())
-            ->first();
+            ->where('created_at', '>=', Carbon::today());
+
+        $this->applyDateRangeToOrderQuery($query, $dateRange);
+
+        $today = $query->first();
 
         return [
             'count' => (int) ($today->order_count ?? 0),
@@ -184,13 +200,12 @@ class DashboardController extends Controller
         ];
     }
 
-    private function buildHourlyOrderAnalytics(int $windowHours): array
+    private function buildHourlyOrderAnalytics(int $windowHours, array $dateRange = []): array
     {
-        $startAt = Carbon::now()->subHours($windowHours - 1)->startOfHour();
-        $endAt = Carbon::now();
+        [$startAt, $endAt, $effectiveWindowHours] = $this->resolveHourlyWindowBounds($windowHours, $dateRange);
         $buckets = [];
 
-        for ($hourOffset = 0; $hourOffset < $windowHours; $hourOffset++) {
+        for ($hourOffset = 0; $hourOffset < $effectiveWindowHours; $hourOffset++) {
             $hour = $startAt->copy()->addHours($hourOffset);
             $key = $hour->format('Y-m-d H:00:00');
 
@@ -206,10 +221,15 @@ class DashboardController extends Controller
         $hourBucketExpression = $this->hourBucketExpression($driver);
 
         if ($hourBucketExpression === null) {
-            $orders = Order::query()
-                ->select(['created_at', 'amount'])
-                ->whereBetween('created_at', [$startAt, $endAt])
-                ->get();
+            $query = Order::query()
+                ->select(['created_at', 'amount']);
+
+            $this->applyDateRangeToOrderQuery($query, [
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+            ]);
+
+            $orders = $query->get();
 
             foreach ($orders as $order) {
                 if (!$order->created_at) {
@@ -225,11 +245,17 @@ class DashboardController extends Controller
                 $buckets[$key]['amount'] += (int) ($order->amount ?? 0);
             }
         } else {
-            $rows = Order::query()
+            $query = Order::query()
                 ->selectRaw($hourBucketExpression . ' as hour_bucket')
                 ->selectRaw('COUNT(*) as order_count')
-                ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
-                ->whereBetween('created_at', [$startAt, $endAt])
+                ->selectRaw('COALESCE(SUM(amount), 0) as total_amount');
+
+            $this->applyDateRangeToOrderQuery($query, [
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+            ]);
+
+            $rows = $query
                 ->groupByRaw($hourBucketExpression)
                 ->orderByRaw($hourBucketExpression)
                 ->get();
@@ -252,7 +278,7 @@ class DashboardController extends Controller
         }
 
         return [
-            'window_hours' => $windowHours,
+            'window_hours' => $effectiveWindowHours,
             'start_at' => $startAt->toDateTimeString(),
             'end_at' => $endAt->toDateTimeString(),
             'data' => array_values($buckets),
@@ -269,11 +295,23 @@ class DashboardController extends Controller
         };
     }
 
-    private function buildMonthlyOrderAnalytics(int $windowMonths): array
+    private function buildMonthlyOrderAnalytics(int $windowMonths, array $dateRange = []): array
     {
         $windowMonths = max(1, $windowMonths);
-        $startAt = Carbon::now()->startOfMonth()->subMonths($windowMonths - 1);
-        $endAt = Carbon::now()->endOfMonth();
+
+        if ($this->hasDateRangeFilter($dateRange)) {
+            $filterStartAt = ($dateRange['start_at'] ?? Carbon::now())->copy();
+            $filterEndAt = ($dateRange['end_at'] ?? Carbon::now())->copy();
+            $startAt = $filterStartAt->copy()->startOfMonth();
+            $endAt = $filterEndAt->copy()->endOfMonth();
+            $windowMonths = max(1, $startAt->diffInMonths($endAt) + 1);
+        } else {
+            $startAt = Carbon::now()->startOfMonth()->subMonths($windowMonths - 1);
+            $endAt = Carbon::now()->endOfMonth();
+            $filterStartAt = $startAt->copy();
+            $filterEndAt = $endAt->copy();
+        }
+
         $buckets = [];
 
         for ($monthOffset = 0; $monthOffset < $windowMonths; $monthOffset++) {
@@ -292,10 +330,15 @@ class DashboardController extends Controller
         $monthBucketExpression = $this->monthBucketExpression($driver);
 
         if ($monthBucketExpression === null) {
-            $orders = Order::query()
-                ->select(['created_at', 'amount'])
-                ->whereBetween('created_at', [$startAt, $endAt])
-                ->get();
+            $query = Order::query()
+                ->select(['created_at', 'amount']);
+
+            $this->applyDateRangeToOrderQuery($query, [
+                'start_at' => $filterStartAt,
+                'end_at' => $filterEndAt,
+            ]);
+
+            $orders = $query->get();
 
             foreach ($orders as $order) {
                 if (!$order->created_at) {
@@ -311,11 +354,17 @@ class DashboardController extends Controller
                 $buckets[$key]['amount'] += (int) ($order->amount ?? 0);
             }
         } else {
-            $rows = Order::query()
+            $query = Order::query()
                 ->selectRaw($monthBucketExpression . ' as month_bucket')
                 ->selectRaw('COUNT(*) as order_count')
-                ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
-                ->whereBetween('created_at', [$startAt, $endAt])
+                ->selectRaw('COALESCE(SUM(amount), 0) as total_amount');
+
+            $this->applyDateRangeToOrderQuery($query, [
+                'start_at' => $filterStartAt,
+                'end_at' => $filterEndAt,
+            ]);
+
+            $rows = $query
                 ->groupByRaw($monthBucketExpression)
                 ->orderByRaw($monthBucketExpression)
                 ->get();
@@ -344,6 +393,104 @@ class DashboardController extends Controller
             'end_at' => $endAt->toDateTimeString(),
             'data' => array_values($buckets),
         ];
+    }
+
+    private function resolveOrderDateRange(Request $request): array
+    {
+        $startDate = trim((string) $request->query('start_date', ''));
+        $endDate = trim((string) $request->query('end_date', ''));
+
+        $startAt = $this->parseDashboardDate($startDate);
+        $endAt = $this->parseDashboardDate($endDate, true);
+
+        if ($startAt && $endAt && $startAt->gt($endAt)) {
+            [$startAt, $endAt] = [$endAt->copy()->startOfDay(), $startAt->copy()->endOfDay()];
+            $startDate = $startAt->format('Y-m-d');
+            $endDate = $endAt->format('Y-m-d');
+        }
+
+        return [
+            'start_date' => $startDate !== '' ? $startDate : null,
+            'end_date' => $endDate !== '' ? $endDate : null,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+        ];
+    }
+
+    private function parseDashboardDate(string $value, bool $endOfDay = false): ?Carbon
+    {
+        if (trim($value) === '') {
+            return null;
+        }
+
+        try {
+            $date = Carbon::createFromFormat('Y-m-d', $value);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $endOfDay ? $date->endOfDay() : $date->startOfDay();
+    }
+
+    private function hasDateRangeFilter(array $dateRange): bool
+    {
+        return ($dateRange['start_at'] ?? null) instanceof Carbon
+            || ($dateRange['end_at'] ?? null) instanceof Carbon;
+    }
+
+    private function applyDateRangeToOrderQuery(Builder $query, array $dateRange, string $column = 'created_at'): Builder
+    {
+        /** @var Carbon|null $startAt */
+        $startAt = $dateRange['start_at'] ?? null;
+        /** @var Carbon|null $endAt */
+        $endAt = $dateRange['end_at'] ?? null;
+
+        if ($startAt && $endAt) {
+            return $query->whereBetween($column, [$startAt, $endAt]);
+        }
+
+        if ($startAt) {
+            return $query->where($column, '>=', $startAt);
+        }
+
+        if ($endAt) {
+            return $query->where($column, '<=', $endAt);
+        }
+
+        return $query;
+    }
+
+    private function resolveHourlyWindowBounds(int $windowHours, array $dateRange): array
+    {
+        $now = Carbon::now();
+
+        if (!$this->hasDateRangeFilter($dateRange)) {
+            $endAt = $now->copy();
+            $startAt = $endAt->copy()->subHours($windowHours - 1)->startOfHour();
+
+            return [$startAt, $endAt, $windowHours];
+        }
+
+        $endAt = ($dateRange['end_at'] ?? $now)->copy();
+        if ($endAt->gt($now)) {
+            $endAt = $now->copy();
+        }
+
+        $startAt = ($dateRange['start_at'] ?? $endAt->copy()->subHours($windowHours - 1))->copy()
+            ->startOfHour();
+
+        $maxWindowStart = $endAt->copy()->subHours($windowHours - 1)->startOfHour();
+        if ($startAt->lt($maxWindowStart)) {
+            $startAt = $maxWindowStart;
+        }
+
+        if ($startAt->gt($endAt)) {
+            $startAt = $endAt->copy()->startOfHour();
+        }
+
+        $effectiveWindowHours = max(1, $startAt->diffInHours($endAt) + 1);
+
+        return [$startAt, $endAt, $effectiveWindowHours];
     }
 
     private function monthBucketExpression(string $driver): ?string
