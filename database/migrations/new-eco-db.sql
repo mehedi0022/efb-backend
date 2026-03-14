@@ -353,7 +353,7 @@ CREATE TABLE `districts` (
 
 CREATE TABLE `ecom_pixels` (
   `id` int UNSIGNED NOT NULL,
-  `code` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `code` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `status` tinyint NOT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL
