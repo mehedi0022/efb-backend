@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('general_settings', function (Blueprint $table) {
-            $table->boolean('is_add_to_cart_show')->default(true)->after('status');
+            $table->boolean('is_add_to_cart_show')->default(false)->after('status');
         });
     }
 
