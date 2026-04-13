@@ -9,7 +9,8 @@ class Category extends Model
 {
     protected $guarded = [];
 
-    public function getRouteKeyName() {
+    public function getRouteKeyName()
+    {
         return 'slug';
     }
     public function categories()
@@ -18,15 +19,17 @@ class Category extends Model
     }
     public function category()
     {
-        return $this->hasOne(Category::class, 'id','parent_id');
+        return $this->hasOne(Category::class, 'id', 'parent_id');
     }
 
-    public function subcategories() {
+    public function subcategories()
+    {
         return $this->hasMany(Subcategory::class, 'category_id')->where('status', 1);
     }
 
-    public function menusubcategories() {
-        return $this->hasMany(Subcategory::class, 'category_id')->select('id','slug','subcategoryName','category_id')->where('status', 1);
+    public function menusubcategories()
+    {
+        return $this->hasMany(Subcategory::class, 'category_id')->select('id', 'slug', 'subcategoryName', 'category_id')->where('status', 1);
     }
 
     public function childrenCategories()
@@ -36,7 +39,7 @@ class Category extends Model
 
     public function menuchildcategories()
     {
-        return $this->hasMany(Childcategory::class, 'subcategory_id')->select('id','slug','subcategory_id','childcategoryName')->where('status',1);
+        return $this->hasMany(Childcategory::class, 'subcategory_id')->select('id', 'slug', 'subcategory_id', 'childcategoryName')->where('status', 1);
     }
 
 
@@ -55,12 +58,8 @@ class Category extends Model
     // }
 
     public function products()
-{
-    return $this->hasMany(Product::class, 'category_id', 'id')
-        ->where('status', 1); // active products only
-}
-
-
-
-
+    {
+        return $this->hasMany(Product::class, 'category_id', 'id')
+            ->where('status', 1); // active products only
+    }
 }

@@ -25,6 +25,8 @@ class GeneralSettingController extends Controller
 
     public function store(Request $request)
     {
+
+
         $existingSetting = GeneralSetting::query()->orderByDesc('id')->first();
         if ($existingSetting) {
             return $this->update($request, $existingSetting->id);
