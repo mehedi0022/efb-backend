@@ -9,4 +9,9 @@ class GeneralSetting extends Model
 {
     use HasFactory;
     protected $guarded = [];
+
+
+    protected $casts = [
+        'is_add_to_cart_show' => 'boolean',
+    ];
 }
