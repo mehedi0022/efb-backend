@@ -57,6 +57,8 @@ class GeneralSettingController extends Controller
                 $data['name'] = trim((string) ($latestSetting?->name ?? 'General Setting'));
             }
 
+            $data['is_add_to_cart_show'] = $request->is_add_to_cart_show === '1' ? true : false;
+
             $data['logo'] = $logoPath ?? $latestSetting?->logo;
             $data['favicon'] = $faviconPath ?? ($latestSetting?->favicon ?? '');
             $data['status'] = array_key_exists('status', $data) ? (int) $data['status'] : 1;
@@ -118,6 +120,8 @@ class GeneralSettingController extends Controller
             if (!array_key_exists('status', $data)) {
                 $data['status'] = $setting->status ?? 1;
             }
+
+            $data['is_add_to_cart_show'] = $request->is_add_to_cart_show === '1' ? true : false;
 
             $setting->update($data);
 
