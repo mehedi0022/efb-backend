@@ -38,7 +38,9 @@ class OrderService
             $cart = $this->cartService->getCart($cartId);
 
             if (!$cart || $cart->items->isEmpty()) {
-                throw new \Exception('Cart is empty');
+                throw ValidationException::withMessages([
+                    'cart' => ['Cart is empty.'],
+                ]);
             }
 
             // 1. Validate cart items (size + price) and calculate subtotal
@@ -52,7 +54,9 @@ class OrderService
                 if ($item->product_id) {
                     $product = Product::query()->find($item->product_id);
                     if (!$product) {
-                        throw new \Exception('One or more products in your cart are no longer available.');
+                        throw ValidationException::withMessages([
+                            'cart' => ['One or more products in your cart are no longer available.'],
+                        ]);
                     }
 
                     [$options, $resolvedSalePrice] = $this->validateOrderItemVariantPricing(
@@ -61,7 +65,9 @@ class OrderService
                         (float) $item->price
                     );
                 } elseif (!is_numeric($item->price) || (float) $item->price < 0) {
-                    throw new \Exception('Invalid cart item price.');
+                    throw ValidationException::withMessages([
+                        'cart' => ['Invalid cart item price.'],
+                    ]);
                 }
 
                 $quantity = max(1, (int) $item->quantity);
@@ -113,7 +119,9 @@ class OrderService
                 // Stock management
                 if ($product) {
                     if ((int) $product->stock < $quantity) {
-                        throw new \Exception("Insufficient stock for {$product->name}.");
+                        throw ValidationException::withMessages([
+                            'cart' => ["Insufficient stock for {$product->name}."],
+                        ]);
                     }
 
                     $product->decrement('stock', $quantity);
