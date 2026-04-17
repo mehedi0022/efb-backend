@@ -249,6 +249,9 @@ Route::prefix('admin')->group(function () {
             Route::put('/payment/{id}', [ApiIntegrationController::class, 'paymentUpdate'])->middleware('admin.permission:integrations.edit');
             Route::get('/sms', [ApiIntegrationController::class, 'smsIndex'])->middleware('admin.permission:integrations.view');
             Route::put('/sms/{id}', [ApiIntegrationController::class, 'smsUpdate'])->middleware('admin.permission:integrations.edit');
+            Route::get('/steadfast', [ApiIntegrationController::class, 'steadfastIndex'])->middleware('admin.permission:integrations.view');
+            Route::put('/steadfast', [ApiIntegrationController::class, 'steadfastUpdate'])->middleware('admin.permission:integrations.edit');
+            Route::post('/steadfast', [ApiIntegrationController::class, 'steadfastUpdate'])->middleware('admin.permission:integrations.edit');
             Route::get('/courier', [ApiIntegrationController::class, 'courierIndex'])->middleware('admin.permission:integrations.view');
             Route::put('/courier/{id}', [ApiIntegrationController::class, 'courierUpdate'])->middleware('admin.permission:integrations.edit');
             Route::post('/pathao-token', [ApiIntegrationController::class, 'getPathaoToken'])->middleware('admin.permission:integrations.edit');

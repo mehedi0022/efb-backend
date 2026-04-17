@@ -19,6 +19,7 @@ use App\Models\ShippingCharge;
 use App\Models\User;
 use App\Services\ApiClient;
 use App\Services\OrderStatusService;
+use App\Services\SteadfastCourierService;
 use Carbon\Carbon;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Collection;
@@ -896,7 +897,7 @@ class OrderController extends Controller
     public function sendToSteadfast(Request $request)
     {
         if (!Str::contains($request->path(), 'send-dropshipping')) {
-            return $this->dispatchToSteadfastCourier($request);
+            return $this->dispatchToSteadfastCourier($request, app(SteadfastCourierService::class));
         }
 
         $validated = $request->validate([
@@ -2600,7 +2601,8 @@ class OrderController extends Controller
         string $courierName,
         string $courierStatus,
         ?string $courierOrderId = null,
-        ?string $error = null
+        ?string $error = null,
+        mixed $responsePayload = null
     ): void {
         $updates = [];
 
@@ -2623,6 +2625,9 @@ class OrderController extends Controller
                 ? trim($error)
                 : null;
         }
+        if (Schema::hasColumn('orders', 'courier_response_payload')) {
+            $updates['courier_response_payload'] = $this->normalizeCourierResponsePayload($responsePayload);
+        }
 
         if (empty($updates)) {
             return;
@@ -2634,7 +2639,7 @@ class OrderController extends Controller
         }
     }
 
-    private function dispatchToSteadfastCourier(Request $request)
+    private function dispatchToSteadfastCourier(Request $request, SteadfastCourierService $steadfastCourierService)
     {
         $validated = $request->validate([
             'order_id' => 'nullable|integer|exists:orders,id',
@@ -2657,34 +2662,6 @@ class OrderController extends Controller
                 'message' => 'No valid order selected.',
             ], 422);
         }
-
-        $steadfast = Courierapi::query()->where('type', 'steadfast')->first();
-        if (!$steadfast) {
-            return response()->json([
-                'success' => false,
-                'status' => 'failed',
-                'message' => 'Steadfast configuration not found. Please configure courier settings first.',
-            ], 422);
-        }
-
-        if ((int) ($steadfast->status ?? 0) !== 1) {
-            return response()->json([
-                'success' => false,
-                'status' => 'failed',
-                'message' => 'Steadfast integration is inactive. Please activate it in courier settings.',
-            ], 422);
-        }
-
-        $endpoint = trim((string) ($steadfast->url ?? ''));
-        if ($endpoint === '') {
-            return response()->json([
-                'success' => false,
-                'status' => 'failed',
-                'message' => 'Steadfast endpoint URL is missing in courier settings.',
-            ], 422);
-        }
-
-        $token = trim((string) ($steadfast->token ?? $steadfast->api_key ?? ''));
 
         $sentOrders = [];
         $failedOrders = [];
@@ -2719,18 +2696,22 @@ class OrderController extends Controller
                 continue;
             }
 
-            $payload = $this->buildSteadfastPayload($order);
-
             try {
-                $requestBuilder = Http::acceptJson()->asJson();
-                if ($token !== '') {
-                    $requestBuilder = $requestBuilder->withToken($token);
-                }
+                $dispatchResult = $steadfastCourierService->dispatch($order);
+            } catch (ValidationException $exception) {
+                $failedMessage = collect($exception->errors())->flatten()->first() ?: 'Steadfast request failed.';
 
-                $response = $requestBuilder->post($endpoint, $payload);
+                $failedOrders[] = [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'message' => $failedMessage,
+                ];
+                continue;
             } catch (Throwable $exception) {
                 $failedMessage = trim((string) $exception->getMessage()) ?: 'Steadfast request failed.';
-                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
+                $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage, [
+                    'exception_message' => $failedMessage,
+                ]);
 
                 $failedOrders[] = [
                     'order_id' => (int) $order->id,
@@ -2740,26 +2721,33 @@ class OrderController extends Controller
                 continue;
             }
 
-            if ($response->successful()) {
-                $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
+            if ($dispatchResult['success']) {
                 $this->recordCourierDispatch(
                     $order,
                     'steadfast',
-                    'sent',
-                    $courierOrderId,
-                    null
+                    (string) ($dispatchResult['courier_status'] ?? 'sent'),
+                    $dispatchResult['courier_order_id'] ?? null,
+                    null,
+                    $dispatchResult['response_payload'] ?? null
                 );
 
                 $sentOrders[] = [
                     'order_id' => (int) $order->id,
                     'invoice_id' => $order->invoice_id,
-                    'courier_order_id' => $courierOrderId,
+                    'courier_order_id' => $dispatchResult['courier_order_id'] ?? null,
                 ];
                 continue;
             }
 
-            $failedMessage = $this->resolveCourierErrorMessage($response, 'Steadfast request failed.');
-            $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
+            $failedMessage = trim((string) ($dispatchResult['message'] ?? 'Steadfast request failed.'));
+            $this->recordCourierDispatch(
+                $order,
+                'steadfast',
+                'failed',
+                null,
+                $failedMessage,
+                $dispatchResult['response_payload'] ?? null
+            );
 
             $failedOrders[] = [
                 'order_id' => (int) $order->id,
@@ -2786,47 +2774,6 @@ class OrderController extends Controller
                 : 'Orders sent to Steadfast successfully.',
             'sent_orders' => $sentOrders,
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildSteadfastPayload(Order $order): array
-    {
-        $shipping = $order->shipping;
-        $customer = $order->customer;
-
-        $recipientName = trim((string) ($shipping?->name ?? $customer?->name ?? ''));
-        $recipientPhone = trim((string) ($shipping?->phone ?? $customer?->phone ?? ''));
-        $recipientAddress = trim((string) ($shipping?->address ?? $customer?->address ?? ''));
-        $deliveryArea = trim((string) ($shipping?->area ?? ''));
-
-        $items = $order->orderdetails->map(function ($detail) {
-            return [
-                'name' => (string) ($detail->product_name ?? 'Item'),
-                'quantity' => max(1, (int) ($detail->qty ?? 1)),
-                'price' => max(0, (float) ($detail->sale_price ?? 0)),
-            ];
-        })->values()->all();
-
-        $itemSummary = collect($items)
-            ->pluck('name')
-            ->filter()
-            ->take(3)
-            ->implode(', ');
-
-        return [
-            'invoice' => (string) $order->invoice_id,
-            'recipient_name' => $recipientName !== '' ? $recipientName : 'Customer',
-            'recipient_phone' => $recipientPhone !== '' ? $recipientPhone : '00000000000',
-            'recipient_address' => $recipientAddress !== '' ? $recipientAddress : 'Address not provided',
-            'delivery_area' => $deliveryArea,
-            'cod_amount' => max(0, (float) ($order->amount ?? 0)),
-            'note' => trim((string) ($order->note ?? '')),
-            'item_description' => $itemSummary !== '' ? $itemSummary : 'Parcel',
-            'total_quantity' => collect($items)->sum('quantity'),
-            'items' => $items,
-        ];
     }
 
     private function resolvePathaoCreateOrderEndpoint(string $configuredUrl = ''): string
@@ -3313,6 +3260,26 @@ class OrderController extends Controller
         }
 
         return $message;
+    }
+
+    private function normalizeCourierResponsePayload(mixed $responsePayload): ?string
+    {
+        if ($responsePayload === null) {
+            return null;
+        }
+
+        if (is_string($responsePayload)) {
+            $normalized = trim($responsePayload);
+            if ($normalized === '') {
+                return null;
+            }
+
+            $responsePayload = ['raw_body' => $normalized];
+        }
+
+        $encoded = json_encode($responsePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $encoded !== false ? $encoded : null;
     }
 
     /**

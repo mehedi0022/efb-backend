@@ -7,6 +7,7 @@ use App\Models\Courierapi;
 use App\Models\GeneralSetting;
 use App\Models\PaymentGateway;
 use App\Models\SmsGateway;
+use App\Services\SteadfastCourierService;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,10 @@ class ApiIntegrationController extends Controller
 {
     private const PATHAO_DEFAULT_BASE_URL = 'https://api-hermes.pathao.com';
     private const PATHAO_ISSUE_TOKEN_PATH = '/aladdin/api/v1/issue-token';
+
+    public function __construct(protected SteadfastCourierService $steadfastCourierService)
+    {
+    }
 
     public function paymentIndex()
     {
@@ -74,6 +79,34 @@ class ApiIntegrationController extends Controller
                 'pathao' => $this->formatCourierConfig($pathao),
                 'steadfast' => $this->formatCourierConfig($steadfast),
             ],
+        ]);
+    }
+
+    public function steadfastIndex()
+    {
+        $steadfast = $this->steadfastCourierService->getConfiguration();
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->steadfastCourierService->formatConfiguration($steadfast),
+        ]);
+    }
+
+    public function steadfastUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'status' => 'required|boolean',
+            'url' => 'nullable|string|max:255',
+            'api_key' => 'nullable|string|max:255',
+            'secret_key' => 'nullable|string|max:255',
+        ]);
+
+        $steadfast = $this->steadfastCourierService->updateConfiguration($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Steadfast configuration saved successfully.',
+            'data' => $this->steadfastCourierService->formatConfiguration($steadfast),
         ]);
     }
 
