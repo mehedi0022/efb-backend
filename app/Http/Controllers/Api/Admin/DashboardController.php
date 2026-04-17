@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -41,7 +42,8 @@ class DashboardController extends Controller
             $noResponseOrderStats = $this->sumStatusBuckets($statusBreakdown, ['no_response']);
             $holdOrderStats = $this->sumStatusBuckets($statusBreakdown, ['hold']);
             $cancelledOrderStats = $this->sumStatusBuckets($statusBreakdown, ['cancel']);
-            $inCourierOrderStats = $this->sumStatusBuckets($statusBreakdown, ['fb_sent']);
+            $fbSentOrderStats = $this->sumStatusBuckets($statusBreakdown, ['fb_sent']);
+            $inCourierOrderStats = $this->getInCourierOrderStats($dateRange);
             $latestOrdersQuery = Order::with(['customer:id,name,phone', 'orderdetails:id,order_id,image'])
                 ->latest();
 
@@ -62,6 +64,7 @@ class DashboardController extends Controller
                     'no_response_order' => $noResponseOrderStats,
                     'hold_order' => $holdOrderStats,
                     'cancelled_order' => $cancelledOrderStats,
+                    'fb_sent_order' => $fbSentOrderStats,
                     'in_courier_order' => $inCourierOrderStats,
                     'today_order' => $this->getTodayOrderStats($dateRange),
                     'total_product' => Product::count(),
@@ -197,6 +200,70 @@ class DashboardController extends Controller
         return [
             'count' => (int) ($today->order_count ?? 0),
             'amount' => (int) ($today->total_amount ?? 0),
+        ];
+    }
+
+    private function getInCourierOrderStats(array $dateRange = []): array
+    {
+        if (!Schema::hasColumn('orders', 'courier_name')) {
+            return [
+                'count' => 0,
+                'amount' => 0,
+            ];
+        }
+
+        $query = Order::query()
+            ->selectRaw('COUNT(*) as order_count')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
+            ->whereNotNull('courier_name')
+            ->where('courier_name', '!=', '');
+
+        if (Schema::hasColumn('orders', 'courier_order_id')) {
+            $query->where(function (Builder $courierQuery) {
+                $courierQuery->whereNotNull('courier_order_id')
+                    ->where('courier_order_id', '!=', '');
+
+                if (Schema::hasColumn('orders', 'courier_status')) {
+                    $courierQuery->orWhere(function (Builder $statusQuery) {
+                        $statusQuery->whereNotNull('courier_status')
+                            ->where('courier_status', '!=', '')
+                            ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
+                                'sent',
+                                'booked',
+                                'created',
+                                'processing',
+                                'in_transit',
+                                'in-transit',
+                                'pending_pickup',
+                                'picked',
+                                'success',
+                            ]);
+                    });
+                }
+            });
+        } elseif (Schema::hasColumn('orders', 'courier_status')) {
+            $query->whereNotNull('courier_status')
+                ->where('courier_status', '!=', '')
+                ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
+                    'sent',
+                    'booked',
+                    'created',
+                    'processing',
+                    'in_transit',
+                    'in-transit',
+                    'pending_pickup',
+                    'picked',
+                    'success',
+                ]);
+        }
+
+        $this->applyDateRangeToOrderQuery($query, $dateRange);
+
+        $stats = $query->first();
+
+        return [
+            'count' => (int) ($stats->order_count ?? 0),
+            'amount' => (int) ($stats->total_amount ?? 0),
         ];
     }
 
