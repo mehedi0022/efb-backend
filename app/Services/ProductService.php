@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Repositories\ProductRepository;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use App\Models\Category;
 use Illuminate\Support\Facades\Schema;
@@ -71,6 +72,10 @@ class ProductService
 
     public function getProducts(array $filters)
     {
+        $categoryId = $this->normalizePositiveInt($filters['category_id'] ?? null);
+        $subcategoryId = $this->normalizePositiveInt($filters['subcategory_id'] ?? null);
+        $childcategoryId = $this->normalizePositiveInt($filters['childcategory_id'] ?? null);
+
         $query = \App\Models\Product::query()
             ->where('status', 1)
             ->select([
@@ -90,15 +95,8 @@ class ProductService
                 'brand:id,name,slug',
             ]);
 
-        if (!empty($filters['category_id'])) {
-            $query->where('category_id', $filters['category_id']);
-        }
-        if (!empty($filters['subcategory_id']) && Schema::hasColumn('products', 'subcategory_id')) {
-            $query->where('subcategory_id', $filters['subcategory_id']);
-        }
-        if (!empty($filters['childcategory_id']) && Schema::hasColumn('products', 'childcategory_id')) {
-            $query->where('childcategory_id', $filters['childcategory_id']);
-        }
+        $this->applyCategoryFilters($query, $categoryId, $subcategoryId, $childcategoryId);
+
         if (!empty($filters['search'])) {
             $query->where('name', 'like', '%' . $filters['search'] . '%');
         }
@@ -106,6 +104,43 @@ class ProductService
         $products = $query->paginate($filters['limit'] ?? 20);
 
         return $this->inventoryService->attachAvailability($products);
+    }
+
+    private function applyCategoryFilters(
+        Builder $query,
+        ?int $categoryId,
+        ?int $subcategoryId,
+        ?int $childcategoryId
+    ): void
+    {
+        if ($childcategoryId !== null && Schema::hasColumn('products', 'childcategory_id')) {
+            $query->where('childcategory_id', $childcategoryId);
+            return;
+        }
+
+        if ($subcategoryId !== null && Schema::hasColumn('products', 'subcategory_id')) {
+            $query->where('subcategory_id', $subcategoryId);
+            return;
+        }
+
+        if ($categoryId !== null) {
+            $query->where('category_id', $categoryId);
+        }
+    }
+
+    private function normalizePositiveInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+
+        return $id > 0 ? $id : null;
     }
 
     public function getProductDetails(string $slug): array
