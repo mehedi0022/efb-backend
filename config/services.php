@@ -49,6 +49,17 @@ return [
         'retry_delay' => env('BDCOURIER_RETRY_DELAY', 500),
     ],
 
+    'fraudpeek' => [
+        'url' => env('FRAUDPEEK_URL', 'https://fraudpeek.com/api/fraud-lookup'),
+        'client_id' => env('FRAUDPEEK_CLIENT_ID'),
+        'api_key' => env('FRAUDPEEK_API_KEY', env('FRAUDPEEK_CLIENT_SECRET')),
+        'client_secret' => env('FRAUDPEEK_CLIENT_SECRET'),
+        'timeout' => env('FRAUDPEEK_TIMEOUT', 20),
+        'connect_timeout' => env('FRAUDPEEK_CONNECT_TIMEOUT', 5),
+        'retry' => env('FRAUDPEEK_RETRY', 1),
+        'retry_delay' => env('FRAUDPEEK_RETRY_DELAY', 500),
+    ],
+
     'dropshipping' => [
         'seller_code' => env('EFB_SELLER_CODE'),
     ],
