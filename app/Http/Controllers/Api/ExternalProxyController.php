@@ -279,6 +279,20 @@ class ExternalProxyController extends Controller
         return $this->request($endpoint, $params);
     }
 
+    public function userSubcategoryProducts(Request $request, string $slug)
+{
+    $domain = $this->normalizeDomain(config('app.url', ''));
+    
+    $endpoint = $this->baseUrl() . "/products/get-user-subcategory-products/{$domain}/{$slug}";
+
+    $params = [
+        'page' => $request->input('page', 1),
+        'limit' => $request->input('limit', 20),
+    ];
+
+    return $this->request($endpoint, $params);
+}
+
     public function searchProducts(Request $request)
     {
         $domain = $this->normalizeDomain(config('app.url', ''));
