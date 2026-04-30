@@ -86,16 +86,7 @@ class OrderController extends Controller
                 });
             }
 
-            if ($request->filled('name')) {
-                $name = trim((string) $request->input('name'));
-                $query->where(function ($nameQuery) use ($name) {
-                    $nameQuery->whereHas('customer', function ($customerQuery) use ($name) {
-                        $customerQuery->where('name', 'LIKE', "%{$name}%");
-                    })->orWhereHas('shipping', function ($shippingQuery) use ($name) {
-                        $shippingQuery->where('name', 'LIKE', "%{$name}%");
-                    });
-                });
-            }
+          
 
             if ($request->filled('tracking_code') && Schema::hasColumn('orders', 'courier_order_id')) {
                 $trackingCode = trim((string) $request->input('tracking_code'));
