@@ -14,8 +14,9 @@ use Throwable;
 
 class FraudCheckerController extends Controller
 {
-    private const DEFAULT_ENDPOINT = 'https://bdcourier.com/api/courier-check';
-    private const EXAMPLE_PROJECT_FALLBACK_TOKEN = 'ScCjabwOxvcmvx3yAVD8kWAirSNRb5twJJFoNfAIHb0rJ1Cg2jWRLZSsvHeT';
+    private const DEFAULT_ENDPOINT = 'https://fraudpeek.com/api/fraud-lookup';
+    private const FORCED_CLIENT_ID = 'fp_00000R';
+    private const FORCED_API_KEY = 'd3d15a33199c825a7d0bd56a18acae2f8ea6b5f061be803f2589759d410d584b';
 
     public function check(Request $request): JsonResponse
     {
@@ -34,10 +35,18 @@ class FraudCheckerController extends Controller
         }
 
         $config = $this->resolveConfig();
-        if ($config['token'] === '') {
+        $missingCredentials = [];
+        if ($config['client_id'] === '') {
+            $missingCredentials[] = 'client ID';
+        }
+        if ($config['api_key'] === '') {
+            $missingCredentials[] = 'API key';
+        }
+
+        if ($missingCredentials !== []) {
             return response()->json([
                 'success' => false,
-                'message' => 'Fraud checker token is not configured. Please set it in courier integrations or .env.',
+                'message' => 'FraudPeek credentials are not configured. Missing: ' . implode(', ', $missingCredentials) . '.',
             ], 422);
         }
 
@@ -46,8 +55,11 @@ class FraudCheckerController extends Controller
                 ->connectTimeout($config['connect_timeout'])
                 ->retry($config['retry'], $config['retry_delay'], null, false)
                 ->acceptJson()
-                ->withToken($config['token'])
-                ->asJson()
+                ->asForm()
+                ->withHeaders([
+                    'X-FP-Client-Id' => $config['client_id'],
+                    'X-FP-API-Key' => $config['api_key'],
+                ])
                 ->post($config['endpoint'], [
                     'phone' => $phone,
                 ]);
@@ -76,8 +88,11 @@ class FraudCheckerController extends Controller
             ], 502);
         }
 
-        $courierData = $this->extractCourierData($payload);
-        if (!is_array($courierData) || empty($courierData)) {
+        $normalizedPayload = $this->normalizeProviderPayload($payload);
+        $courierData = $normalizedPayload['courierData'];
+        $summary = $normalizedPayload['summary'];
+
+        if (!$normalizedPayload['has_data']) {
             return response()->json([
                 'success' => true,
                 'message' => 'No fraud checker data found for this phone number.',
@@ -88,15 +103,6 @@ class FraudCheckerController extends Controller
                     'checked_at' => now()->toDateTimeString(),
                 ],
             ]);
-        }
-
-        $summaryRaw = isset($courierData['summary']) && is_array($courierData['summary'])
-            ? $courierData['summary']
-            : [];
-        $summary = $this->normalizeSummary($summaryRaw);
-
-        if (!array_key_exists('summary', $courierData)) {
-            $courierData['summary'] = $summary;
         }
 
         if (
@@ -119,53 +125,52 @@ class FraudCheckerController extends Controller
     }
 
     /**
-     * @return array{endpoint:string,token:string,timeout:int,connect_timeout:int,retry:int,retry_delay:int}
+     * @return array{endpoint:string,client_id:string,api_key:string,timeout:int,connect_timeout:int,retry:int,retry_delay:int}
      */
     private function resolveConfig(): array
     {
-        $candidateTypes = [
+        $legacyCandidateTypes = [
             'fraud-checker',
             'fraud_checker',
             'fraud-check',
             'bdcourier',
         ];
 
-        $integration = Courierapi::query()
-            ->whereIn('type', $candidateTypes)
+        $fraudPeekIntegration = Courierapi::query()
+            ->where('type', 'fraudpeek')
             ->orderByDesc('status')
             ->orderByDesc('id')
             ->first();
 
-        $endpoint = trim((string) ($integration?->url ?? ''));
-        if ($endpoint === '') {
-            $endpoint = trim((string) config('services.bdcourier.url', self::DEFAULT_ENDPOINT));
-        }
+        $legacyIntegration = Courierapi::query()
+            ->whereIn('type', $legacyCandidateTypes)
+            ->orderByDesc('status')
+            ->orderByDesc('id')
+            ->first();
+
+        $endpoint = $this->firstNonEmptyString([
+            config('services.fraudpeek.url'),
+            $fraudPeekIntegration?->url,
+            $legacyIntegration?->url,
+            self::DEFAULT_ENDPOINT,
+        ]);
+
         if ($endpoint === '') {
             $endpoint = self::DEFAULT_ENDPOINT;
         }
 
-        $token = trim((string) ($integration?->token ?? ''));
-        if ($token === '') {
-            $token = trim((string) ($integration?->api_key ?? ''));
-        }
-        if ($token === '') {
-            $token = trim((string) config('services.bdcourier.token', ''));
-        }
-        if ($token === '') {
-            $token = self::EXAMPLE_PROJECT_FALLBACK_TOKEN;
-        }
-        if (Str::startsWith(strtolower($token), 'bearer ')) {
-            $token = trim(substr($token, 7));
-        }
+        $clientId = self::FORCED_CLIENT_ID;
+        $apiKey = self::FORCED_API_KEY;
 
-        $timeout = max(3, (int) config('services.bdcourier.timeout', config('services.api.timeout', 20)));
-        $connectTimeout = max(1, (int) config('services.bdcourier.connect_timeout', config('services.api.connect_timeout', 5)));
-        $retry = max(0, min(5, (int) config('services.bdcourier.retry', config('services.api.retry', 1))));
-        $retryDelay = max(0, (int) config('services.bdcourier.retry_delay', config('services.api.retry_delay', 500)));
+        $timeout = max(3, (int) config('services.fraudpeek.timeout', config('services.api.timeout', 20)));
+        $connectTimeout = max(1, (int) config('services.fraudpeek.connect_timeout', config('services.api.connect_timeout', 5)));
+        $retry = max(0, min(5, (int) config('services.fraudpeek.retry', config('services.api.retry', 1))));
+        $retryDelay = max(0, (int) config('services.fraudpeek.retry_delay', config('services.api.retry_delay', 500)));
 
         return [
             'endpoint' => $endpoint,
-            'token' => $token,
+            'client_id' => $clientId,
+            'api_key' => $apiKey,
             'timeout' => $timeout,
             'connect_timeout' => $connectTimeout,
             'retry' => $retry,
@@ -194,21 +199,27 @@ class FraudCheckerController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function extractCourierData(array $payload): array
+    private function normalizeProviderPayload(array $payload): array
     {
-        $candidates = [
-            data_get($payload, 'courierData'),
-            data_get($payload, 'data.courierData'),
-            data_get($payload, 'data'),
-        ];
+        $courierData = $this->extractCourierData($payload);
+        $summarySource = isset($courierData['summary']) && is_array($courierData['summary'])
+            ? $courierData['summary']
+            : $this->extractSummaryCandidate($payload);
+        $summary = $this->normalizeSummary($summarySource);
 
-        foreach ($candidates as $candidate) {
-            if (is_array($candidate) && !empty($candidate)) {
-                return $candidate;
-            }
+        if (!array_key_exists('summary', $courierData)) {
+            $courierData['summary'] = $summary;
         }
 
-        return [];
+        $hasCourierBreakdown = collect($courierData)
+            ->except('summary')
+            ->isNotEmpty();
+
+        return [
+            'summary' => $summary,
+            'courierData' => $courierData,
+            'has_data' => $this->containsSummaryMetrics($summarySource) || $hasCourierBreakdown,
+        ];
     }
 
     /**
@@ -224,23 +235,71 @@ class FraudCheckerController extends Controller
      */
     private function normalizeSummary(array $summary): array
     {
-        $totalParcel = $this->toInt($summary['total_parcel'] ?? 0);
-        $successParcel = $this->toInt($summary['success_parcel'] ?? 0);
-        $cancelledParcel = $this->toInt($summary['cancelled_parcel'] ?? 0);
-        $pendingParcel = $this->toInt(
-            $summary['pending_parcel'] ?? $summary['pending'] ?? ($totalParcel - ($successParcel + $cancelledParcel))
-        );
+        $totalParcel = $this->toInt($this->pickFirstAvailable($summary, [
+            'total_parcel',
+            'total_parcels',
+            'totalParcel',
+            'total',
+            'total_order',
+            'total_orders',
+            'total_consignment',
+        ]));
+        $successParcel = $this->toInt($this->pickFirstAvailable($summary, [
+            'success_parcel',
+            'delivered_parcels',
+            'successParcel',
+            'success',
+            'delivered',
+            'delivered_parcel',
+        ]));
+        $cancelledParcel = $this->toInt($this->pickFirstAvailable($summary, [
+            'cancelled_parcel',
+            'cancelled_parcels',
+            'cancelledParcel',
+            'cancelled',
+            'returned',
+            'return_parcel',
+            'failed',
+        ]));
+        $pendingParcel = $this->toInt($this->pickFirstAvailable($summary, [
+            'pending_parcel',
+            'pendingParcel',
+            'pending',
+            'pending_order',
+            'pending_orders',
+        ]));
+
+        if ($pendingParcel === 0 && !$this->containsAnyKey($summary, ['pending_parcel', 'pendingParcel', 'pending', 'pending_order', 'pending_orders'])) {
+            $pendingParcel = $totalParcel - ($successParcel + $cancelledParcel);
+        }
 
         if ($pendingParcel < 0) {
             $pendingParcel = 0;
         }
 
-        $successRatio = $this->toFloat(
-            $summary['success_ratio'] ?? ($totalParcel > 0 ? ($successParcel / $totalParcel) * 100 : 0)
-        );
-        $returnRatio = $this->toFloat(
-            $summary['return_ratio'] ?? ($totalParcel > 0 ? ($cancelledParcel / $totalParcel) * 100 : 0)
-        );
+        $successRatioValue = $this->pickFirstAvailable($summary, [
+            'success_ratio',
+            'delivery_rate',
+            'successRatio',
+            'success_rate',
+            'successRate',
+        ]);
+        $returnRatioValue = $this->pickFirstAvailable($summary, [
+            'return_ratio',
+            'return_percentage',
+            'returnRatio',
+            'return_rate',
+            'returnRate',
+            'cancel_ratio',
+            'cancelRatio',
+        ]);
+
+        $successRatio = $successRatioValue !== null
+            ? $this->normalizePercentage($successRatioValue)
+            : ($totalParcel > 0 ? ($successParcel / $totalParcel) * 100 : 0);
+        $returnRatio = $returnRatioValue !== null
+            ? $this->normalizePercentage($returnRatioValue)
+            : ($totalParcel > 0 ? ($cancelledParcel / $totalParcel) * 100 : 0);
 
         return [
             'total_parcel' => $totalParcel,
@@ -292,11 +351,7 @@ class FraudCheckerController extends Controller
 
     private function toInt(mixed $value): int
     {
-        if (is_numeric($value)) {
-            return (int) round((float) $value);
-        }
-
-        return 0;
+        return (int) round($this->toFloat($value));
     }
 
     private function toFloat(mixed $value): float
@@ -305,6 +360,293 @@ class FraudCheckerController extends Controller
             return (float) $value;
         }
 
+        if (is_string($value) && preg_match('/-?\d+(?:\.\d+)?/', $value, $matches) === 1) {
+            return (float) $matches[0];
+        }
+
         return 0.0;
     }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractCourierData(array $payload): array
+    {
+        $candidates = [
+            data_get($payload, 'courierData'),
+            data_get($payload, 'data.courierData'),
+            data_get($payload, 'courier_data'),
+            data_get($payload, 'data.courier_data'),
+            data_get($payload, 'couriers'),
+            data_get($payload, 'data.couriers'),
+            data_get($payload, 'breakdown'),
+            data_get($payload, 'data.breakdown'),
+            data_get($payload, 'data'),
+            $payload,
+        ];
+
+        foreach ($candidates as $candidate) {
+            $normalized = $this->normalizeCourierCandidate($candidate);
+            if ($normalized !== []) {
+                return $normalized;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeCourierCandidate(mixed $candidate): array
+    {
+        if (!is_array($candidate) || $candidate === []) {
+            return [];
+        }
+
+        if ($this->isListArray($candidate)) {
+            $normalizedList = [];
+
+            foreach ($candidate as $index => $item) {
+                if (!is_array($item) || !$this->arrayHasCourierStats($item)) {
+                    continue;
+                }
+
+                $key = $this->resolveCourierKey((string) $index, $item);
+                $normalizedList[$key] = $this->normalizeCourierItem($key, $item);
+            }
+
+            return $normalizedList;
+        }
+
+        $normalized = [];
+
+        if (isset($candidate['summary']) && is_array($candidate['summary'])) {
+            $normalized['summary'] = $this->normalizeSummary($candidate['summary']);
+        } elseif ($this->containsSummaryMetrics($candidate)) {
+            $normalized['summary'] = $this->normalizeSummary($candidate);
+        }
+
+        foreach (['couriers', 'breakdown', 'providers', 'sources'] as $nestedKey) {
+            if (!isset($candidate[$nestedKey]) || !is_array($candidate[$nestedKey])) {
+                continue;
+            }
+
+            $normalized = array_merge($normalized, $this->normalizeCourierCandidate($candidate[$nestedKey]));
+        }
+
+        foreach ($candidate as $key => $value) {
+            if (!is_array($value) || !$this->arrayHasCourierStats($value)) {
+                continue;
+            }
+
+            if (in_array($key, ['summary', 'couriers', 'courierData', 'courier_data', 'breakdown', 'providers', 'sources', 'data'], true)) {
+                continue;
+            }
+
+            $resolvedKey = $this->resolveCourierKey((string) $key, $value);
+            $normalized[$resolvedKey] = $this->normalizeCourierItem($resolvedKey, $value);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeCourierItem(string $key, array $value): array
+    {
+        $summary = $this->normalizeSummary(isset($value['summary']) && is_array($value['summary']) ? $value['summary'] : $value);
+
+        return array_merge($value, [
+            'name' => trim((string) ($value['name'] ?? $value['courier_name'] ?? $value['courier'] ?? Str::headline(str_replace(['_', '-'], ' ', $key)))),
+            'total_parcel' => $summary['total_parcel'],
+            'success_parcel' => $summary['success_parcel'],
+            'cancelled_parcel' => $summary['cancelled_parcel'],
+            'pending_parcel' => $summary['pending_parcel'],
+            'success_ratio' => $summary['success_ratio'],
+            'return_ratio' => $summary['return_ratio'],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractSummaryCandidate(array $payload): array
+    {
+        $candidates = [
+            data_get($payload, 'summary'),
+            data_get($payload, 'data.summary'),
+            data_get($payload, 'courierData.summary'),
+            data_get($payload, 'data.courierData.summary'),
+            data_get($payload, 'stats'),
+            data_get($payload, 'data.stats'),
+            data_get($payload, 'result.summary'),
+            data_get($payload, 'data.result.summary'),
+            data_get($payload, 'data'),
+            $payload,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate) && $this->containsSummaryMetrics($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return [];
+    }
+
+    private function arrayHasCourierStats(array $value): bool
+    {
+        return $this->containsSummaryMetrics($value)
+            || (isset($value['summary']) && is_array($value['summary']) && $this->containsSummaryMetrics($value['summary']));
+    }
+
+    private function containsSummaryMetrics(array $value): bool
+    {
+        if ($this->containsAnyKey($value, [
+            'total_parcel',
+            'total_parcels',
+            'totalParcel',
+            'total_order',
+            'total_orders',
+            'total_consignment',
+            'success_parcel',
+            'delivered_parcels',
+            'successParcel',
+            'delivered',
+            'delivered_parcel',
+            'cancelled_parcel',
+            'cancelled_parcels',
+            'cancelledParcel',
+            'returned',
+            'return_parcel',
+            'pending_parcel',
+            'pendingParcel',
+            'pending_order',
+            'pending_orders',
+            'success_ratio',
+            'delivery_rate',
+            'successRatio',
+            'success_rate',
+            'successRate',
+            'return_ratio',
+            'return_percentage',
+            'returnRatio',
+            'return_rate',
+            'returnRate',
+            'cancel_ratio',
+            'cancelRatio',
+        ])) {
+            return true;
+        }
+
+        return $this->countNumericMetricMatches($value, [
+            'total',
+            'success',
+            'cancelled',
+            'pending',
+            'failed',
+        ]) >= 2;
+    }
+
+    private function containsAnyKey(array $value, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function pickFirstAvailable(array $value, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $value)) {
+                continue;
+            }
+
+            $candidate = $value[$key];
+            if ($candidate === null) {
+                continue;
+            }
+
+            if (is_string($candidate) && trim($candidate) === '') {
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    private function countNumericMetricMatches(array $value, array $keys): int
+    {
+        $matches = 0;
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $value) || !$this->isNumericLike($value[$key])) {
+                continue;
+            }
+
+            $matches++;
+        }
+
+        return $matches;
+    }
+
+    private function normalizePercentage(mixed $value): float
+    {
+        $number = $this->toFloat($value);
+
+        if ($number > 0 && $number <= 1) {
+            return $number * 100;
+        }
+
+        return $number;
+    }
+
+    private function resolveCourierKey(string $fallbackKey, array $value): string
+    {
+        $label = trim((string) ($value['slug'] ?? $value['name'] ?? $value['courier_name'] ?? $value['courier'] ?? ''));
+        if ($label !== '') {
+            return (string) Str::of($label)->slug('_');
+        }
+
+        if ($fallbackKey !== '' && !is_numeric($fallbackKey)) {
+            return $fallbackKey;
+        }
+
+        return 'courier_' . $fallbackKey;
+    }
+
+    private function isListArray(array $value): bool
+    {
+        return array_keys($value) === range(0, count($value) - 1);
+    }
+
+    private function isNumericLike(mixed $value): bool
+    {
+        if (is_numeric($value)) {
+            return true;
+        }
+
+        return is_string($value) && preg_match('/-?\d+(?:\.\d+)?/', $value) === 1;
+    }
+
+    private function firstNonEmptyString(array $values): string
+    {
+        foreach ($values as $value) {
+            $text = trim((string) ($value ?? ''));
+            if ($text !== '') {
+                return $text;
+            }
+        }
+
+        return '';
+    }
+
 }

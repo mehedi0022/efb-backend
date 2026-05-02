@@ -15,6 +15,10 @@ class SuperAdminUsersSeeder extends Seeder
      */
     public function run(): void
     {
+        if (User::query()->exists()) {
+            return;
+        }
+
         $rbacService = app(RbacService::class);
         $permissions = $rbacService->syncDefaultPermissions()->pluck('name')->all();
 
@@ -35,10 +39,10 @@ class SuperAdminUsersSeeder extends Seeder
         ];
 
         foreach ($users as $seedUser) {
-            $user = User::query()->updateOrCreate(
-                ['email' => strtolower($seedUser['email'])],
+            $user = User::query()->create(
                 [
                     'name' => $seedUser['name'],
+                    'email' => strtolower($seedUser['email']),
                     'password' => Hash::make('12345678'),
                 ]
             );

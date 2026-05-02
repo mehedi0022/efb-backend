@@ -16,7 +16,7 @@ return new class extends Migration
             $table->charset = 'utf8mb4';
             $table->collation = 'utf8mb4_unicode_ci';
             $table->increments('id');
-            $table->string('code', 255);
+            $table->longText('code');
             $table->tinyInteger('status');
             $table->timestamp('created_at')->nullable();
             $table->timestamp('updated_at')->nullable();

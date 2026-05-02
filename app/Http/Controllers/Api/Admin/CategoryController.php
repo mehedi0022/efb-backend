@@ -5,18 +5,48 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Category;
+use App\Models\Product;
+use App\Models\Subcategory;
 use Illuminate\Support\Str;
-use DB;
 
 class CategoryController extends Controller
 {
+    private const DELETE_BLOCKED_MESSAGE = 'This category cannot be deleted because it contains subcategories or products. Please remove those items first before deleting the category.';
+
+    private function resolveCategoryIds(Request $request): array
+    {
+        $ids = $request->input('category_ids', $request->input('ids', []));
+        if (!is_array($ids)) {
+            return [];
+        }
+
+        return collect($ids)
+            ->filter(static fn ($id) => is_numeric($id))
+            ->map(static fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function categoryQueryWithDependencyCounts()
+    {
+        return Category::query()->addSelect([
+            'subcategories_count' => Subcategory::query()
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('subcategories.category_id', 'categories.id'),
+            'products_count' => Product::query()
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('products.category_id', 'categories.id'),
+        ]);
+    }
+
     /**
      * Get all categories
      */
     public function index(Request $request)
     {
         try {
-            $query = Category::query();
+            $query = $this->categoryQueryWithDependencyCounts();
 
             // Search
             if ($request->filled('keyword')) {
@@ -63,7 +93,7 @@ class CategoryController extends Controller
     public function show($id)
     {
         try {
-            $category = Category::findOrFail($id);
+            $category = $this->categoryQueryWithDependencyCounts()->findOrFail($id);
             return response()->json([
                 'success' => true,
                 'data' => $this->formatCategory($category),
@@ -91,6 +121,7 @@ class CategoryController extends Controller
             $category->slug = Str::slug($request->name);
             $category->status = $request->status ?? 1;
             $category->save();
+            $category = $this->categoryQueryWithDependencyCounts()->findOrFail($category->id);
 
             return response()->json([
                 'success' => true,
@@ -122,6 +153,7 @@ class CategoryController extends Controller
                 $category->status = $request->status;
             }
             $category->save();
+            $category = $this->categoryQueryWithDependencyCounts()->findOrFail($category->id);
 
             return response()->json([
                 'success' => true,
@@ -142,11 +174,51 @@ class CategoryController extends Controller
     public function destroy(Request $request)
     {
         $request->validate([
-            'category_ids' => 'required|array',
+            'category_ids' => 'nullable|array',
+            'ids' => 'nullable|array',
         ]);
 
         try {
-            Category::whereIn('id', $request->category_ids)->delete();
+            $categoryIds = $this->resolveCategoryIds($request);
+            if (empty($categoryIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No valid category ids provided.',
+                ], 422);
+            }
+
+            $categories = $this->categoryQueryWithDependencyCounts()
+                ->whereIn('id', $categoryIds)
+                ->get();
+
+            if ($categories->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No matching categories found.',
+                ], 404);
+            }
+
+            $blockedCategories = $categories->filter(function ($category) {
+                return (int) ($category->subcategories_count ?? 0) > 0
+                    || (int) ($category->products_count ?? 0) > 0;
+            });
+
+            if ($blockedCategories->isNotEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => self::DELETE_BLOCKED_MESSAGE,
+                    'blocked_categories' => $blockedCategories->map(function ($category) {
+                        return [
+                            'id' => $category->id,
+                            'name' => $category->name,
+                            'subcategories_count' => (int) ($category->subcategories_count ?? 0),
+                            'products_count' => (int) ($category->products_count ?? 0),
+                        ];
+                    })->values(),
+                ], 422);
+            }
+
+            Category::whereIn('id', $categories->pluck('id')->all())->delete();
 
             return response()->json([
                 'success' => true,
@@ -231,6 +303,9 @@ class CategoryController extends Controller
      */
     private function formatCategory($category)
     {
+        $subcategoriesCount = (int) ($category->subcategories_count ?? 0);
+        $productsCount = (int) ($category->products_count ?? 0);
+
         return [
             'id' => $category->id,
             'name' => $category->name,
@@ -239,6 +314,9 @@ class CategoryController extends Controller
             'status_text' => $category->status ? 'Active' : 'Inactive',
             'show_home' => (int) $category->show_home,
             'show_home_text' => $category->show_home ? 'Yes' : 'No',
+            'subcategories_count' => $subcategoriesCount,
+            'products_count' => $productsCount,
+            'can_delete' => $subcategoriesCount === 0 && $productsCount === 0,
             'created_at' => $category->created_at ? $category->created_at->format('Y-m-d H:i:s') : null,
         ];
     }
