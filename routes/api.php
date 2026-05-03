@@ -43,7 +43,7 @@ use App\Http\Controllers\Api\FacebookTrackingController;
 
 Route::prefix('v1')->middleware('ip.block')->group(function () {
     // Facebook CAPI endpoint
-    Route::post('/v1/facebook/track-purchase', 
+    Route::post('/facebook/track-purchase', 
     [FacebookTrackingController::class, 'trackPurchase']
     );
 
