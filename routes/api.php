@@ -39,8 +39,14 @@ use App\Http\Controllers\Api\SettingController;
 use App\Http\Controllers\Api\ShippingChargeController;
 use App\Http\Controllers\Api\SiteDataController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\FacebookTrackingController;
 
 Route::prefix('v1')->middleware('ip.block')->group(function () {
+    // Facebook CAPI endpoint
+    Route::post('/v1/facebook/track-purchase', 
+    [FacebookTrackingController::class, 'trackPurchase']
+    );
+
     // Public content endpoints
     Route::get('/settings', [SettingController::class, 'show']);
     Route::get('/site-data', [SiteDataController::class, 'index']);
