@@ -128,11 +128,15 @@ public function products(Request $request)
                 'products.name',
                 DB::raw('MAX(order_details.image) as image'),
                 DB::raw('SUM(order_details.qty) as quantity_sold'),
-                DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale')
+                DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
+                DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
             )
+
+            ->where('orders.order_status', 10) 
+
             ->groupBy('products.product_id', 'products.name')
             ->orderByDesc('quantity_sold')
-            ->limit(20) // ← top 20 only
+            ->limit(20)
             ->get();
 
         return response()->json([
