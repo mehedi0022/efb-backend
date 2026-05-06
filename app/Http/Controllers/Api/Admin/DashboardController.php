@@ -121,20 +121,18 @@ public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
-            ->join('products', 'order_details.product_id', '=', 'products.product_id')
+            ->join('products', 'order_details.product_id', '=', 'products.id')
             ->join('orders', 'order_details.order_id', '=', 'orders.id')
             ->select(
-                'products.product_id',
+                'products.id as product_id',
                 'products.name',
                 DB::raw('MAX(order_details.image) as image'),
                 DB::raw('SUM(order_details.qty) as quantity_sold'),
                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
                 DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
             )
-
-            ->where('orders.order_status', 10) 
-
-            ->groupBy('products.product_id', 'products.name')
+            ->where('orders.order_status', 'delivered') 
+            ->groupBy('products.id', 'products.name')
             ->orderByDesc('quantity_sold')
             ->limit(20)
             ->get();
@@ -150,7 +148,6 @@ public function products(Request $request)
         ], 500);
     }
 }
-
 
 
     private function buildOrderStatusBreakdown(array $dateRange = []): array
