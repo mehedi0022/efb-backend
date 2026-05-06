@@ -117,20 +117,19 @@ class DashboardController extends Controller
     }
 
 
- public function products(Request $request)
+public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
-            ->leftJoin('products', 'order_details.product_id', '=', 'products.id')
             ->select(
-                'order_details.product_id',
-                DB::raw('MAX(order_details.product_name) as name'), 
-                DB::raw('MAX(order_details.image) as image'),
-                DB::raw('SUM(order_details.qty) as quantity_sold'),
-                DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
-                DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
+                'product_id',
+                DB::raw('MAX(product_name) as name'),
+                DB::raw('MAX(image) as image'),
+                DB::raw('SUM(qty) as quantity_sold'),
+                DB::raw('SUM(sale_price * qty) as total_sale'),
+                DB::raw('COUNT(DISTINCT order_id) as total_orders')
             )
-            ->groupBy('order_details.product_id')
+            ->groupBy('product_id')
             ->orderByDesc('quantity_sold')
             ->limit(20)
             ->get();
@@ -147,7 +146,6 @@ class DashboardController extends Controller
         ], 500);
     }
 }
-
 
     private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
