@@ -117,15 +117,10 @@ class DashboardController extends Controller
     }
 
 
-public function products(Request $request)
+
+    public function products(Request $request)
 {
     try {
-        // DEBUG — check raw order_details data first
-        $raw = DB::table('order_details')
-            ->select('product_id', 'product_name', 'image', 'qty', 'sale_price')
-            ->limit(5)
-            ->get();
-
         $products = DB::table('order_details')
             ->select(
                 'product_id',
@@ -142,7 +137,6 @@ public function products(Request $request)
 
         return response()->json([
             'success' => true,
-            'debug_raw' => $raw,        // ← check this first
             'count' => $products->count(),
             'data' => $products,
         ]);
