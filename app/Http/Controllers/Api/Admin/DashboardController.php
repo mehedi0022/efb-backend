@@ -118,34 +118,44 @@ class DashboardController extends Controller
 
     public function products(Request $request)
 {
-    $perPage = (int) $request->get('per_page', 10);
-    $page = (int) $request->get('page', 1);
+    try {
+        $perPage = (int) $request->get('per_page', 10);
+        $page = (int) $request->get('page', 1);
 
-    $products = DB::table('order_items')
-        ->join('products', 'order_items.product_id', '=', 'products.id')
-        ->join('orders', 'order_items.order_id', '=', 'orders.id')
-        ->where('orders.deleted_at', null)
-        ->select(
-            'products.id',
-            'products.name',
-            'products.image',
-            DB::raw('SUM(order_items.quantity) as quantity_sold'),
-            DB::raw('SUM(order_items.price * order_items.quantity) as total_sale')
-        )
-        ->groupBy('products.id', 'products.name', 'products.image')
-        ->orderByDesc('quantity_sold')
-        ->paginate($perPage, ['*'], 'page', $page);
+        $products = DB::table('order_details') // ← changed from order_items
+            ->join('products', 'order_details.product_id', '=', 'products.id')
+            ->join('orders', 'order_details.order_id', '=', 'orders.id')
+            ->whereNull('orders.deleted_at')
+            ->select(
+                'products.id',
+                'products.name',
+                'products.image',
+                DB::raw('SUM(order_details.quantity) as quantity_sold'),
+                DB::raw('SUM(order_details.price * order_details.quantity) as total_sale')
+            )
+            ->groupBy('products.id', 'products.name', 'products.image')
+            ->orderByDesc('quantity_sold')
+            ->paginate($perPage, ['*'], 'page', $page);
 
-    return response()->json([
-        'data' => $products->items(),
-        'pagination' => [
-            'current_page' => $products->currentPage(),
-            'per_page' => $products->perPage(),
-            'total' => $products->total(),
-            'last_page' => $products->lastPage(),
-        ],
-    ]);
+        return response()->json([
+            'success' => true,
+            'data' => $products->items(),
+            'pagination' => [
+                'current_page' => $products->currentPage(),
+                'per_page' => $products->perPage(),
+                'total' => $products->total(),
+                'last_page' => $products->lastPage(),
+            ],
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error fetching products: ' . $e->getMessage(),
+        ], 500);
+    }
 }
+
+
 
     private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
