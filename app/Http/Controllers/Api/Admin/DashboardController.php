@@ -118,7 +118,7 @@ class DashboardController extends Controller
 
 
 
-    public function products(Request $request)
+public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
@@ -130,6 +130,8 @@ class DashboardController extends Controller
                 DB::raw('SUM(sale_price * qty) as total_sale'),
                 DB::raw('COUNT(DISTINCT order_id) as total_orders')
             )
+            ->whereNotNull('product_id')  // ← exclude null product_id rows
+            ->where('product_id', '!=', 0) // ← exclude zero product_id
             ->groupBy('product_id')
             ->orderByDesc('quantity_sold')
             ->limit(20)
