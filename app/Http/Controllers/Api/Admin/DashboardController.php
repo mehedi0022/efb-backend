@@ -132,7 +132,6 @@ public function products(Request $request)
             ->where('product_sku', '!=', '')
             ->groupBy('product_sku')
             ->orderByDesc('quantity_sold')
-            ->limit(20)
             ->get()
             ->map(function ($product) {
                 $image = $product->image;
