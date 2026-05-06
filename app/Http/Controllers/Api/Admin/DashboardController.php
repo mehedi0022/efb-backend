@@ -117,22 +117,21 @@ class DashboardController extends Controller
     }
 
 
-
 public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
             ->select(
-                'product_id',
+                'product_sku',
                 DB::raw('MAX(product_name) as name'),
                 DB::raw('MAX(image) as image'),
                 DB::raw('SUM(qty) as quantity_sold'),
                 DB::raw('SUM(sale_price * qty) as total_sale'),
                 DB::raw('COUNT(DISTINCT order_id) as total_orders')
             )
-            ->whereNotNull('product_id')  // ← exclude null product_id rows
-            ->where('product_id', '!=', 0) // ← exclude zero product_id
-            ->groupBy('product_id')
+            ->whereNotNull('product_sku')
+            ->where('product_sku', '!=', '')
+            ->groupBy('product_sku')
             ->orderByDesc('quantity_sold')
             ->limit(20)
             ->get();
