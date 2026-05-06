@@ -117,45 +117,14 @@ class DashboardController extends Controller
     }
 
 
-//  public function products(Request $request)
-// {
-//     try {
-//         $products = DB::table('order_details')
-//             ->leftJoin('products', 'order_details.product_id', '=', 'products.id')
-//             ->select(
-//                 'order_details.product_id',
-//                 DB::raw('MAX(order_details.product_name) as name'), 
-//                 DB::raw('MAX(order_details.image) as image'),
-//                 DB::raw('SUM(order_details.qty) as quantity_sold'),
-//                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
-//                 DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
-//             )
-//             ->groupBy('order_details.product_id')
-//             ->orderByDesc('quantity_sold')
-//             ->limit(20)
-//             ->get();
-
-//         return response()->json([
-//             'success' => true,
-//             'count' => $products->count(),
-//             'data' => $products,
-//         ]);
-//     } catch (\Throwable $e) {
-//         return response()->json([
-//             'success' => false,
-//             'message' => 'Error fetching products: ' . $e->getMessage(),
-//         ], 500);
-//     }
-// }
-
-public function products(Request $request)
+ public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
             ->leftJoin('products', 'order_details.product_id', '=', 'products.id')
             ->select(
                 'order_details.product_id',
-                DB::raw('MAX(order_details.product_name) as name'),
+                DB::raw('MAX(order_details.product_name) as name'), 
                 DB::raw('MAX(order_details.image) as image'),
                 DB::raw('SUM(order_details.qty) as quantity_sold'),
                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
@@ -164,14 +133,7 @@ public function products(Request $request)
             ->groupBy('order_details.product_id')
             ->orderByDesc('quantity_sold')
             ->limit(20)
-            ->get()
-            ->map(function ($product) {
-                // Generate full image URL
-                $product->image = $product->image
-                    ? asset($product->image)
-                    : null;
-                return $product;
-            });
+            ->get();
 
         return response()->json([
             'success' => true,
