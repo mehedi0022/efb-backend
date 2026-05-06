@@ -117,7 +117,6 @@ class DashboardController extends Controller
     }
 
 
-
     public function products(Request $request)
 {
     try {
@@ -127,16 +126,15 @@ class DashboardController extends Controller
         $products = DB::table('order_details')
             ->join('products', 'order_details.product_id', '=', 'products.id')
             ->join('orders', 'order_details.order_id', '=', 'orders.id')
-            ->whereNull('orders.deleted_at')
             ->select(
                 'products.id',
                 'products.name',
-                'order_details.product_sku', // ← group by SKU
+                'order_details.product_sku',
                 DB::raw('MAX(order_details.image) as image'),
                 DB::raw('SUM(order_details.qty) as quantity_sold'),
                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale')
             )
-            ->groupBy('products.id', 'products.name', 'order_details.product_sku') // ← include SKU in groupBy
+            ->groupBy('products.id', 'products.name', 'order_details.product_sku')
             ->orderByDesc('quantity_sold')
             ->paginate($perPage, ['*'], 'page', $page);
 
