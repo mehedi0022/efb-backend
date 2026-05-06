@@ -116,24 +116,26 @@ class DashboardController extends Controller
         }
     }
 
+
     public function products(Request $request)
 {
     try {
         $perPage = (int) $request->get('per_page', 10);
         $page = (int) $request->get('page', 1);
 
-        $products = DB::table('order_details') // ← changed from order_items
+        $products = DB::table('order_details')
             ->join('products', 'order_details.product_id', '=', 'products.id')
+            ->leftJoin('productimages', 'products.id', '=', 'productimages.product_id')
             ->join('orders', 'order_details.order_id', '=', 'orders.id')
             ->whereNull('orders.deleted_at')
             ->select(
                 'products.id',
                 'products.name',
-                'products.image',
+                'productimages.image', // ← changed
                 DB::raw('SUM(order_details.quantity) as quantity_sold'),
                 DB::raw('SUM(order_details.price * order_details.quantity) as total_sale')
             )
-            ->groupBy('products.id', 'products.name', 'products.image')
+            ->groupBy('products.id', 'products.name', 'productimages.image')
             ->orderByDesc('quantity_sold')
             ->paginate($perPage, ['*'], 'page', $page);
 
