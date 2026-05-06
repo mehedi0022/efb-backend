@@ -116,7 +116,6 @@ class DashboardController extends Controller
         }
     }
 
-
 public function products(Request $request)
 {
     try {
@@ -134,7 +133,18 @@ public function products(Request $request)
             ->groupBy('product_sku')
             ->orderByDesc('quantity_sold')
             ->limit(20)
-            ->get();
+            ->get()
+            ->map(function ($product) {
+                $image = $product->image;
+                if (!$image) {
+                    $product->image = null;
+                } elseif (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
+                    $product->image = $image;
+                } else {
+                    $product->image = rtrim(config('app.url'), '/') . '/' . ltrim($image, '/');
+                }
+                return $product;
+            });
 
         return response()->json([
             'success' => true,
@@ -148,7 +158,6 @@ public function products(Request $request)
         ], 500);
     }
 }
-
     private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
         $buckets = $this->statusBucketsTemplate();
