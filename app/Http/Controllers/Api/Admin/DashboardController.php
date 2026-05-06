@@ -117,12 +117,11 @@ class DashboardController extends Controller
     }
 
 
-public function products(Request $request)
+    public function products(Request $request)
 {
     try {
         $products = DB::table('order_details')
             ->join('products', 'order_details.product_id', '=', 'products.id')
-            ->join('orders', 'order_details.order_id', '=', 'orders.id')
             ->select(
                 'products.id as product_id',
                 'products.name',
@@ -131,7 +130,6 @@ public function products(Request $request)
                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
                 DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
             )
-            ->where('orders.order_status', 10) 
             ->groupBy('products.id', 'products.name')
             ->orderByDesc('quantity_sold')
             ->limit(20)
@@ -139,6 +137,7 @@ public function products(Request $request)
 
         return response()->json([
             'success' => true,
+            'count' => $products->count(), // ← helps debug
             'data' => $products,
         ]);
     } catch (\Throwable $e) {
