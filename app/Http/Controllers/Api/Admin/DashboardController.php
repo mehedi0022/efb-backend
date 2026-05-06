@@ -131,7 +131,7 @@ public function products(Request $request)
                 DB::raw('SUM(order_details.sale_price * order_details.qty) as total_sale'),
                 DB::raw('COUNT(DISTINCT order_details.order_id) as total_orders')
             )
-            ->where('orders.order_status', 'delivered') 
+            ->where('orders.order_status', 10) 
             ->groupBy('products.id', 'products.name')
             ->orderByDesc('quantity_sold')
             ->limit(20)
