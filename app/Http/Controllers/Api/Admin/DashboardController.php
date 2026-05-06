@@ -141,7 +141,8 @@ public function products(Request $request)
                 } elseif (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
                     $product->image = $image;
                 } else {
-                    $product->image = rtrim(config('app.url'), '/') . '/' . ltrim($image, '/');
+                    $baseUrl = str_replace('://', '://api.', rtrim(config('app.url'), '/'));
+                    $product->image = $baseUrl . '/' . ltrim($image, '/');
                 }
                 return $product;
             });
