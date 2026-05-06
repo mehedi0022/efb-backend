@@ -116,6 +116,37 @@ class DashboardController extends Controller
         }
     }
 
+    public function products(Request $request)
+{
+    $perPage = (int) $request->get('per_page', 10);
+    $page = (int) $request->get('page', 1);
+
+    $products = DB::table('order_items')
+        ->join('products', 'order_items.product_id', '=', 'products.id')
+        ->join('orders', 'order_items.order_id', '=', 'orders.id')
+        ->where('orders.deleted_at', null)
+        ->select(
+            'products.id',
+            'products.name',
+            'products.image',
+            DB::raw('SUM(order_items.quantity) as quantity_sold'),
+            DB::raw('SUM(order_items.price * order_items.quantity) as total_sale')
+        )
+        ->groupBy('products.id', 'products.name', 'products.image')
+        ->orderByDesc('quantity_sold')
+        ->paginate($perPage, ['*'], 'page', $page);
+
+    return response()->json([
+        'data' => $products->items(),
+        'pagination' => [
+            'current_page' => $products->currentPage(),
+            'per_page' => $products->perPage(),
+            'total' => $products->total(),
+            'last_page' => $products->lastPage(),
+        ],
+    ]);
+}
+
     private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
         $buckets = $this->statusBucketsTemplate();

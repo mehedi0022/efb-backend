@@ -106,6 +106,7 @@ Route::prefix('admin')->group(function () {
         Route::put('/profile/password', [AdminAuthController::class, 'changePassword']);
 
         Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('admin.permission:dashboard.view');
+        Route::get('/dashboard/products', [DashboardController::class, 'products'])->middleware('admin.permission:dashboard.view');
 
         Route::prefix('fraud-checker')->group(function () {
             Route::post('/check', [FraudCheckerController::class, 'check'])->middleware('admin.permission:fraud-checker.view');
