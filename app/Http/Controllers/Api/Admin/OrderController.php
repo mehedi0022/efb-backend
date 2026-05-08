@@ -999,6 +999,7 @@ class OrderController extends Controller
                 if ($fbSentStatusId !== null) {
                     $order->order_status = (string) $fbSentStatusId;
                 }
+                $order->order_type = 'dropshipping';
                 $order->save();
 
                 $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
@@ -1049,7 +1050,7 @@ class OrderController extends Controller
                 : 'Orders sent to dropshipping successfully.',
             'sent_orders' => $sentOrders,
         ]);
-    }
+    } 
 
     /**
      * Send orders to Pathao.
@@ -2721,6 +2722,9 @@ class OrderController extends Controller
                     null,
                     $dispatchResult['response_payload'] ?? null
                 );
+
+                $order->order_type = 'own';
+                $order->save();
 
                 $sentOrders[] = [
                     'order_id' => (int) $order->id,

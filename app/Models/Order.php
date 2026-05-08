@@ -21,6 +21,16 @@ class Order extends Model
         'courier_response_payload' => 'array',
     ];
 
+    public function scopeDropshipping($query)
+    {
+        return $query->where('order_type', 'dropshipping');
+    }
+
+    public function scopeOwn($query)
+    {
+        return $query->where('order_type', 'own');
+    }
+
     public function orderdetails()
     {
         return $this->hasMany(OrderDetails::class, 'order_id');
