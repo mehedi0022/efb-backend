@@ -190,6 +190,10 @@ class OrderController extends Controller
                 ->whereNotNull('courier_name')
                 ->where('courier_name', '!=', '');
 
+            if (Schema::hasColumn('orders', 'order_type')) {
+            $query->where('order_type', 'own');
+            }
+            
             if (!empty($validated['courier'])) {
                 $query->where('courier_name', strtolower(trim((string) $validated['courier'])));
             }

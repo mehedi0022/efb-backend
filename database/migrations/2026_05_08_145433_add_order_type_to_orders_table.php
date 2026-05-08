@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('orders', function (Blueprint $table) {
             if (!Schema::hasColumn('orders', 'order_type')) {
-                $table->string('order_type')->nullable()->default('own')->after('id');
+                $table->string('order_type')->nullable()->after('id');
             }
         });
     }
