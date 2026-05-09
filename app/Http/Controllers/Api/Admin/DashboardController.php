@@ -245,129 +245,74 @@ class DashboardController extends Controller
         ];
     }
 
-    // private function getInCourierOrderStats(array $dateRange = []): array
-    // {
-    //     if (!Schema::hasColumn('orders', 'courier_name')) {
-    //         return [
-    //             'count' => 0,
-    //             'amount' => 0,
-    //         ];
-    //     }
-
-    //     $query = Order::query()
-    //         ->selectRaw('COUNT(*) as order_count')
-    //         ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
-    //         ->whereNotNull('courier_name')
-    //         ->where('courier_name', '!=', '')
-    //         ->when(Schema::hasColumn('orders', 'order_type'), fn (Builder $q) =>
-    //         $q->where('order_type', 'own')
-    //         );
-
-    //     if (Schema::hasColumn('orders', 'courier_order_id')) {
-    //         $query->where(function (Builder $courierQuery) {
-    //             $courierQuery->whereNotNull('courier_order_id')
-    //                 ->where('courier_order_id', '!=', '');
-
-    //             if (Schema::hasColumn('orders', 'courier_status')) {
-    //                 $courierQuery->orWhere(function (Builder $statusQuery) {
-    //                     $statusQuery->whereNotNull('courier_status')
-    //                         ->where('courier_status', '!=', '')
-    //                         ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
-    //                             'sent',
-    //                             'booked',
-    //                             'created',
-    //                             'processing',
-    //                             'in_transit',
-    //                             'in-transit',
-    //                             'pending_pickup',
-    //                             'picked',
-    //                             'success',
-    //                         ]);
-    //                 });
-    //             }
-    //         });
-    //     } elseif (Schema::hasColumn('orders', 'courier_status')) {
-    //         $query->whereNotNull('courier_status')
-    //             ->where('courier_status', '!=', '')
-    //             ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
-    //                 'sent',
-    //                 'booked',
-    //                 'created',
-    //                 'processing',
-    //                 'in_transit',
-    //                 'in-transit',
-    //                 'pending_pickup',
-    //                 'picked',
-    //                 'success',
-    //             ]);
-    //     }
-
-    //     $this->applyDateRangeToOrderQuery($query, $dateRange);
-
-    //     $stats = $query->first();
-
-    //     return [
-    //         'count' => (int) ($stats->order_count ?? 0),
-    //         'amount' => (int) ($stats->total_amount ?? 0),
-    //     ];
-    // }
-
     private function getInCourierOrderStats(array $dateRange = []): array
     {
-      
-        $query = Order::with([
-            'orderdetails:id,order_id,product_type'
-        ])
-        ->where('order_type', 'own')
-        ->whereNotNull('courier_name')
-        ->where('courier_name', '!=', '')
-        ->whereNotNull('courier_status')
-        ->where('courier_status', '!=', '');
-    
-        $this->applyDateRangeToOrderQuery($query, $dateRange);
-    
-        $orders = $query->get();
-    
-        $count = 0;
-        $amount = 0;
-        $courierDetails = [];
-        $ownProductCount = 0;
-    
-        foreach ($orders as $order) {
-            $count++;
-            $amount += (int) ($order->amount ?? 0);
-    
-            // Count products with 'own' type
-            if ($order->orderdetails && $order->orderdetails->count() > 0) {
-                foreach ($order->orderdetails as $detail) {
-                    if ($detail->product_type === 'own') {
-                        $ownProductCount++;
-                    }
-                }
-            }
-    
-            // Collect courier details from orders table columns
-            $courierDetails[] = [
-                'order_id' => $order->id,
-                'invoice_id' => $order->invoice_id,
-                'courier_name' => $order->courier_name,
-                'courier_status' => $order->courier_status,
-                'courier_order_id' => $order->courier_order_id ?? null,
-                'amount' => (int) ($order->amount ?? 0),
-                'has_own_product' => $ownProductCount > 0,
+        if (!Schema::hasColumn('orders', 'courier_name')) {
+            return [
+                'count' => 0,
+                'amount' => 0,
             ];
         }
-    
+
+        $query = Order::query()
+            ->selectRaw('COUNT(*) as order_count')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
+            ->whereNotNull('courier_name')
+            ->where('courier_name', '!=', '')
+            ->when(Schema::hasColumn('orders', 'order_type'), fn (Builder $q) =>
+            $q->where('order_type', 'own')
+            );
+
+        if (Schema::hasColumn('orders', 'courier_order_id')) {
+            $query->where(function (Builder $courierQuery) {
+                $courierQuery->whereNotNull('courier_order_id')
+                    ->where('courier_order_id', '!=', '');
+
+                if (Schema::hasColumn('orders', 'courier_status')) {
+                    $courierQuery->orWhere(function (Builder $statusQuery) {
+                        $statusQuery->whereNotNull('courier_status')
+                            ->where('courier_status', '!=', '')
+                            ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
+                                'sent',
+                                'booked',
+                                'created',
+                                'processing',
+                                'in_transit',
+                                'in-transit',
+                                'pending_pickup',
+                                'picked',
+                                'success',
+                            ]);
+                    });
+                }
+            });
+        } elseif (Schema::hasColumn('orders', 'courier_status')) {
+            $query->whereNotNull('courier_status')
+                ->where('courier_status', '!=', '')
+                ->whereIn(DB::raw('LOWER(TRIM(courier_status))'), [
+                    'sent',
+                    'booked',
+                    'created',
+                    'processing',
+                    'in_transit',
+                    'in-transit',
+                    'pending_pickup',
+                    'picked',
+                    'success',
+                ]);
+        }
+
+        $this->applyDateRangeToOrderQuery($query, $dateRange);
+
+        $stats = $query->first();
+
         return [
-            'count' => $count,
-            'amount' => $amount,
-            'own_product_count' => $ownProductCount,
-            'courier_details' => $courierDetails,
+            'count' => (int) ($stats->order_count ?? 0),
+            'amount' => (int) ($stats->total_amount ?? 0),
         ];
     }
 
 
- 
 
     private function buildHourlyOrderAnalytics(int $windowHours, array $dateRange = []): array
     {
