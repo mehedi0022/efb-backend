@@ -116,48 +116,48 @@ class DashboardController extends Controller
         }
     }
 
-public function products(Request $request)
-{
-    try {
-        $products = DB::table('order_details')
-            ->select(
-                'product_sku',
-                DB::raw('MAX(product_name) as name'),
-                DB::raw('MAX(image) as image'),
-                DB::raw('SUM(qty) as quantity_sold'),
-                DB::raw('SUM(sale_price * qty) as total_sale'),
-                DB::raw('COUNT(DISTINCT order_id) as total_orders')
-            )
-            ->whereNotNull('product_sku')
-            ->where('product_sku', '!=', '')
-            ->groupBy('product_sku')
-            ->orderByDesc('quantity_sold')
-            ->get()
-            ->map(function ($product) {
-                $image = $product->image;
-                if (!$image) {
-                    $product->image = null;
-                } elseif (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
-                    $product->image = $image;
-                } else {
-                    $baseUrl = str_replace('://', '://api.', rtrim(config('app.url'), '/'));
-                    $product->image = $baseUrl . '/' . ltrim($image, '/');
-                }
-                return $product;
-            });
+    public function products(Request $request)
+    {
+        try {
+            $products = DB::table('order_details')
+                ->select(
+                    'product_sku',
+                    DB::raw('MAX(product_name) as name'),
+                    DB::raw('MAX(image) as image'),
+                    DB::raw('SUM(qty) as quantity_sold'),
+                    DB::raw('SUM(sale_price * qty) as total_sale'),
+                    DB::raw('COUNT(DISTINCT order_id) as total_orders')
+                )
+                ->whereNotNull('product_sku')
+                ->where('product_sku', '!=', '')
+                ->groupBy('product_sku')
+                ->orderByDesc('quantity_sold')
+                ->get()
+                ->map(function ($product) {
+                    $image = $product->image;
+                    if (!$image) {
+                        $product->image = null;
+                    } elseif (str_starts_with($image, 'http://') || str_starts_with($image, 'https://')) {
+                        $product->image = $image;
+                    } else {
+                        $baseUrl = str_replace('://', '://api.', rtrim(config('app.url'), '/'));
+                        $product->image = $baseUrl . '/' . ltrim($image, '/');
+                    }
+                    return $product;
+                });
 
-        return response()->json([
-            'success' => true,
-            'count' => $products->count(),
-            'data' => $products,
-        ]);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Error fetching products: ' . $e->getMessage(),
-        ], 500);
+            return response()->json([
+                'success' => true,
+                'count' => $products->count(),
+                'data' => $products,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching products: ' . $e->getMessage(),
+            ], 500);
+        }
     }
-}
     private function buildOrderStatusBreakdown(array $dateRange = []): array
     {
         $buckets = $this->statusBucketsTemplate();
@@ -258,7 +258,10 @@ public function products(Request $request)
             ->selectRaw('COUNT(*) as order_count')
             ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
             ->whereNotNull('courier_name')
-            ->where('courier_name', '!=', '');
+            ->where('courier_name', '!=', '')
+            ->when(Schema::hasColumn('orders', 'order_type'), fn (Builder $q) =>
+            $q->where('order_type', 'own')
+            );
 
         if (Schema::hasColumn('orders', 'courier_order_id')) {
             $query->where(function (Builder $courierQuery) {
@@ -308,6 +311,8 @@ public function products(Request $request)
             'amount' => (int) ($stats->total_amount ?? 0),
         ];
     }
+
+
 
     private function buildHourlyOrderAnalytics(int $windowHours, array $dateRange = []): array
     {

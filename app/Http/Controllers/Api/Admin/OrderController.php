@@ -190,6 +190,10 @@ class OrderController extends Controller
                 ->whereNotNull('courier_name')
                 ->where('courier_name', '!=', '');
 
+            if (Schema::hasColumn('orders', 'order_type')) {
+            $query->where('order_type', 'own');
+            }
+            
             if (!empty($validated['courier'])) {
                 $query->where('courier_name', strtolower(trim((string) $validated['courier'])));
             }
@@ -999,6 +1003,7 @@ class OrderController extends Controller
                 if ($fbSentStatusId !== null) {
                     $order->order_status = (string) $fbSentStatusId;
                 }
+                $order->order_type = 'dropshipping';
                 $order->save();
 
                 $courierOrderId = $this->extractCourierOrderIdFromResponse($response);
@@ -1049,7 +1054,7 @@ class OrderController extends Controller
                 : 'Orders sent to dropshipping successfully.',
             'sent_orders' => $sentOrders,
         ]);
-    }
+    } 
 
     /**
      * Send orders to Pathao.
@@ -2721,6 +2726,9 @@ class OrderController extends Controller
                     null,
                     $dispatchResult['response_payload'] ?? null
                 );
+
+                $order->order_type = 'own';
+                $order->save();
 
                 $sentOrders[] = [
                     'order_id' => (int) $order->id,
