@@ -104,11 +104,13 @@ class IncompleteOrderController extends Controller
             $productId = isset($item['product_id']) && is_numeric($item['product_id'])
                 ? (int) $item['product_id']
                 : null;
+            $externalProductId = trim((string) ($item['external_product_id'] ?? ''));
             $resolvedSku = trim((string) (
                 $options['sku']
                 ?? $options['product_sku']
                 ?? data_get($item, 'product.sku')
                 ?? data_get($item, 'product.product_code')
+                ?? $externalProductId
                 ?? ''
             ));
 
@@ -120,6 +122,7 @@ class IncompleteOrderController extends Controller
             $snapshot[$rowId] = [
                 'id' => $productId,
                 'product_id' => $productId,
+                'external_product_id' => $externalProductId !== '' ? $externalProductId : null,
                 'name' => $item['product_name']
                     ?? data_get($item, 'product.name')
                     ?? 'Unknown Product',
