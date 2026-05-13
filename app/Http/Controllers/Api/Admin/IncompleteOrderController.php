@@ -324,10 +324,12 @@ class IncompleteOrderController extends Controller
                         ?? ''
                     ));
                 }
-                if ($productId && $productSku === '') {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'cart_data' => ["Missing SKU for product ID {$productId} in incomplete order."],
-                    ]);
+                if ($productSku === '') {
+                    $productSku = trim((string) (
+                        $item['external_product_id']
+                        ?? $options['external_product_id']
+                        ?? ''
+                    ));
                 }
                 if ($productSku === '') {
                     $productSku = null;

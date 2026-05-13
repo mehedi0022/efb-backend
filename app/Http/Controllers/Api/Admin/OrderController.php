@@ -2331,13 +2331,25 @@ class OrderController extends Controller
                 ?? $detail->image
                 ?? 'default.png'
             ));
-            $detailSku = trim((string) (
-                $item['product_sku']
-                ?? $product?->sku
-                ?? $product?->product_code
-                ?? $detail->product_sku
-                ?? ''
-            ));
+            $detailSku = trim((string) ($item['product_sku'] ?? ''));
+            if ($detailSku === '' && $product) {
+                $detailSku = trim((string) (
+                    $product->sku
+                    ?? $product->product_code
+                    ?? ''
+                ));
+            }
+            if ($detailSku === '' && $productId > 0) {
+                $detailSku = trim((string) (
+                    Product::query()
+                        ->where('id', $productId)
+                        ->value('product_code')
+                    ?? ''
+                ));
+            }
+            if ($detailSku === '') {
+                $detailSku = trim((string) ($detail->product_sku ?? ''));
+            }
             $detail->product_sku = $detailSku !== '' ? $detailSku : null;
             $detail->product_size = array_key_exists('product_size', $item)
                 ? (string) ($item['product_size'] ?? '')
