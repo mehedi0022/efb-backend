@@ -268,11 +268,16 @@ class IncompleteOrderController extends Controller
 
             $productSkuMap = collect($items)
                 ->map(function ($item) {
-                    if (!is_array($item) || !isset($item['id']) || !is_numeric($item['id'])) {
+                    if (!is_array($item)) {
                         return null;
                     }
 
-                    return (int) $item['id'];
+                    $productId = $item['id'] ?? $item['product_id'] ?? null;
+                    if (!is_numeric($productId)) {
+                        return null;
+                    }
+
+                    return (int) $productId;
                 })
                 ->filter(fn ($id) => $id > 0)
                 ->unique()
@@ -299,8 +304,9 @@ class IncompleteOrderController extends Controller
                 $options['product_color'] = $options['product_color'] ?? $item['product_color'] ?? null;
                 $options['image'] = $options['image'] ?? $item['image'] ?? null;
 
-                $productId = isset($item['id']) && is_numeric($item['id'])
-                    ? (int) $item['id']
+                $rawProductId = $item['id'] ?? $item['product_id'] ?? null;
+                $productId = is_numeric($rawProductId)
+                    ? (int) $rawProductId
                     : null;
                 $productSku = trim((string) (
                     $options['sku']
@@ -310,6 +316,19 @@ class IncompleteOrderController extends Controller
                     ?? ($productId ? ($productSkuMap[$productId] ?? '') : '')
                     ?? ''
                 ));
+                if ($productSku === '' && $productId) {
+                    $productSku = trim((string) (
+                        Product::query()
+                            ->where('id', $productId)
+                            ->value('product_code')
+                        ?? ''
+                    ));
+                }
+                if ($productId && $productSku === '') {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'cart_data' => ["Missing SKU for product ID {$productId} in incomplete order."],
+                    ]);
+                }
                 if ($productSku === '') {
                     $productSku = null;
                 }

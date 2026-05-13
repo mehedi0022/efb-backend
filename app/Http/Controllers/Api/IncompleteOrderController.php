@@ -101,9 +101,25 @@ class IncompleteOrderController extends Controller
         foreach ($items as $item) {
             $rowId = (string) ($item['id'] ?? Str::uuid()->toString());
             $options = is_array($item['options'] ?? null) ? $item['options'] : [];
+            $productId = isset($item['product_id']) && is_numeric($item['product_id'])
+                ? (int) $item['product_id']
+                : null;
+            $resolvedSku = trim((string) (
+                $options['sku']
+                ?? $options['product_sku']
+                ?? data_get($item, 'product.sku')
+                ?? data_get($item, 'product.product_code')
+                ?? ''
+            ));
+
+            if ($resolvedSku !== '') {
+                $options['sku'] = $resolvedSku;
+                $options['product_sku'] = $resolvedSku;
+            }
 
             $snapshot[$rowId] = [
-                'id' => $item['product_id'] ?? null,
+                'id' => $productId,
+                'product_id' => $productId,
                 'name' => $item['product_name']
                     ?? data_get($item, 'product.name')
                     ?? 'Unknown Product',
@@ -112,6 +128,12 @@ class IncompleteOrderController extends Controller
                 'image' => $item['product_image']
                     ?? data_get($item, 'product.image.image')
                     ?? null,
+                'sku' => $resolvedSku !== '' ? $resolvedSku : null,
+                'product_sku' => $resolvedSku !== '' ? $resolvedSku : null,
+                'product_size_id' => $options['product_size_id'] ?? $options['size_id'] ?? null,
+                'product_color_id' => $options['product_color_id'] ?? $options['color_id'] ?? null,
+                'product_size' => $options['product_size'] ?? $options['size'] ?? null,
+                'product_color' => $options['product_color'] ?? $options['color'] ?? null,
                 'options' => $options,
             ];
         }
