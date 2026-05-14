@@ -46,7 +46,7 @@ class IncompleteOrderController extends Controller
 
         $data = $orders->items();
         foreach ($data as $item) {
-            $item->cart_products = $this->decodeCartProducts($item->cart_data);
+            $item->cart_products = $this->decodeCartProducts($this->resolveCartPayload($item));
         }
 
         return response()->json([
@@ -78,7 +78,7 @@ class IncompleteOrderController extends Controller
     public function show($id)
     {
         $order = IncompleteOrder::findOrFail($id);
-        $cartProducts = $this->decodeCartProducts($order->cart_data);
+        $cartProducts = $this->decodeCartProducts($this->resolveCartPayload($order));
 
         return response()->json([
             'success' => true,
@@ -133,7 +133,7 @@ class IncompleteOrderController extends Controller
         ]);
 
         $order = IncompleteOrder::findOrFail($request->order_id);
-        $decoded = json_decode($order->cart_data, true) ?: [];
+        $decoded = json_decode($this->resolveCartPayload($order), true) ?: [];
 
         if (isset($decoded[$request->row_id])) {
             $decoded[$request->row_id]['qty'] = $request->qty;
@@ -168,7 +168,7 @@ class IncompleteOrderController extends Controller
         $order->shipping_charge_id = $request->shipping_charge_id;
         $order->save();
 
-        $decoded = json_decode($order->cart_data, true) ?: [];
+        $decoded = json_decode($this->resolveCartPayload($order), true) ?: [];
         $subtotal = $this->calculateSubtotal($decoded);
 
         $shipping = $this->resolveShippingAmount($request->shipping_charge_id);
@@ -199,7 +199,7 @@ class IncompleteOrderController extends Controller
         $newOrderStatusId = $this->orderStatusService->resolveStatusId('new-order') ?: 1;
 
         return DB::transaction(function () use ($request, $incompleteOrder, $newOrderStatusId) {
-            $decoded = json_decode($incompleteOrder->cart_data, true) ?: [];
+            $decoded = json_decode($this->resolveCartPayload($incompleteOrder), true) ?: [];
             $items = [];
             $subtotal = 0;
 
@@ -324,10 +324,12 @@ class IncompleteOrderController extends Controller
                         ?? ''
                     ));
                 }
-                if ($productId && $productSku === '') {
-                    throw \Illuminate\Validation\ValidationException::withMessages([
-                        'cart_data' => ["Missing SKU for product ID {$productId} in incomplete order."],
-                    ]);
+                if ($productSku === '') {
+                    $productSku = trim((string) (
+                        $item['external_product_id']
+                        ?? $options['external_product_id']
+                        ?? ''
+                    ));
                 }
                 if ($productSku === '') {
                     $productSku = null;
@@ -397,6 +399,21 @@ class IncompleteOrderController extends Controller
         }
 
         return $cartProducts;
+    }
+
+    private function resolveCartPayload(IncompleteOrder $order): ?string
+    {
+        $primary = $order->cart_data ?? null;
+        if (is_string($primary) && trim($primary) !== '') {
+            return $primary;
+        }
+
+        $legacy = $order->getAttribute('cart_date');
+        if (is_string($legacy) && trim($legacy) !== '') {
+            return $legacy;
+        }
+
+        return null;
     }
 
     private function calculateSubtotal(array $decoded): float

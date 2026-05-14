@@ -454,6 +454,9 @@ class OrderController extends Controller
             'admin_note' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
+            'items.*.external_product_id' => 'nullable|string|max:255',
+            'items.*.product_sku' => 'nullable|string|max:255',
+            'items.*.sku' => 'nullable|string|max:255',
             'items.*.product_name' => 'required|string|max:255',
             'items.*.qty' => 'required|integer|min:1',
             'items.*.sale_price' => 'required|numeric|min:0',
@@ -634,6 +637,9 @@ class OrderController extends Controller
             'items' => 'nullable|array|min:1',
             'items.*.id' => 'nullable|integer',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
+            'items.*.external_product_id' => 'nullable|string|max:255',
+            'items.*.product_sku' => 'nullable|string|max:255',
+            'items.*.sku' => 'nullable|string|max:255',
             'items.*.product_name' => 'nullable|string|max:255',
             'items.*.qty' => 'required_with:items|integer|min:1',
             'items.*.sale_price' => 'required_with:items|numeric|min:0',
@@ -2333,11 +2339,28 @@ class OrderController extends Controller
             ));
             $detailSku = trim((string) (
                 $item['product_sku']
-                ?? $product?->sku
-                ?? $product?->product_code
-                ?? $detail->product_sku
+                ?? $item['sku']
+                ?? $item['external_product_id']
                 ?? ''
             ));
+            if ($detailSku === '' && $product) {
+                $detailSku = trim((string) (
+                    $product->sku
+                    ?? $product->product_code
+                    ?? ''
+                ));
+            }
+            if ($detailSku === '' && $productId > 0) {
+                $detailSku = trim((string) (
+                    Product::query()
+                        ->where('id', $productId)
+                        ->value('product_code')
+                    ?? ''
+                ));
+            }
+            if ($detailSku === '') {
+                $detailSku = trim((string) ($detail->product_sku ?? ''));
+            }
             $detail->product_sku = $detailSku !== '' ? $detailSku : null;
             $detail->product_size = array_key_exists('product_size', $item)
                 ? (string) ($item['product_size'] ?? '')
