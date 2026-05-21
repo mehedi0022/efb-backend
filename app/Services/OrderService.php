@@ -11,18 +11,21 @@ use App\Models\Product;
 use App\Models\Productsize;
 use App\Models\GeneralSetting;
 use App\Models\ShippingCharge;
+use App\Services\PanelOrderSyncService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class OrderService
 {
     public function __construct(
         protected CartService $cartService,
-        protected OrderStatusService $orderStatusService
+        protected OrderStatusService $orderStatusService,
+        protected PanelOrderSyncService $panelOrderSyncService
     )
     {
     }
@@ -33,7 +36,7 @@ class OrderService
         $this->orderStatusService->ensureDefaultStatuses();
         $newOrderStatusId = $this->orderStatusService->resolveStatusId('new-order') ?: 1;
 
-        return DB::transaction(function () use ($data, $cartId, $ipAddress, $newOrderStatusId) {
+        $result = DB::transaction(function () use ($data, $cartId, $ipAddress, $newOrderStatusId) {
             $normalizedIpAddress = $this->normalizeIpAddress($ipAddress);
             $cart = $this->cartService->getCart($cartId);
 
@@ -144,10 +147,16 @@ class OrderService
                 $productColorId = $options['product_color_id'] ?? $options['color_id'] ?? null;
                 $productSize = $options['product_size'] ?? $options['size'] ?? null;
                 $productColor = $options['product_color'] ?? $options['color'] ?? null;
+                $panelProductId = $this->toPositiveInt($options['panel_product_id'] ?? null);
+                $panelVariantId = $this->toPositiveInt($options['panel_variant_id'] ?? null);
+                $panelSellerProductId = $this->toPositiveInt($options['panel_seller_product_id'] ?? null);
 
                 OrderDetails::create([
                     'order_id' => $order->id,
                     'product_id' => $item->product_id ?? 0,
+                    'panel_product_id' => $panelProductId,
+                    'panel_variant_id' => $panelVariantId,
+                    'panel_seller_product_id' => $panelSellerProductId,
                     'product_name' => $item->product_name ?? $product?->name ?? $item->product?->name ?? 'Unknown',
                     'purchase_price' => $product?->purchase_price ?? $item->product?->purchase_price ?? 0,
                     'sale_price' => (int) round($salePrice),
@@ -186,8 +195,28 @@ class OrderService
             $this->cartService->clearCart($cart->id);
             $cart->update(['status' => 'completed']);
 
-            return $order;
+            return [
+                'order' => $order,
+                'validatedLines' => $validatedLines,
+                'checkoutData' => $data,
+            ];
         });
+
+        try {
+            return $this->panelOrderSyncService->sync(
+                $result['order'],
+                $result['validatedLines'],
+                $result['checkoutData']
+            );
+        } catch (Throwable $exception) {
+            report($exception);
+            $result['order']->update([
+                'panel_sync_status' => 'failed',
+                'panel_sync_error' => mb_substr((string) $exception->getMessage(), 0, 3000),
+                'panel_synced_at' => null,
+            ]);
+            return $result['order']->fresh();
+        }
     }
 
     /**
@@ -422,5 +451,12 @@ class OrderService
         $ip = inet_ntop($packed);
 
         return is_string($ip) ? strtolower($ip) : '';
+    }
+
+    protected function toPositiveInt(mixed $value): ?int
+    {
+        if (!is_numeric($value)) return null;
+        $number = (int) $value;
+        return $number > 0 ? $number : null;
     }
 }

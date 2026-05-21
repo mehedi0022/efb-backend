@@ -234,7 +234,7 @@ class InventoryService
     {
         $baseUrl = rtrim((string) config('services.api.base_url'), '/');
 
-        return $baseUrl !== '' ? $baseUrl : 'http://api.freelancerbangladesh.com';
+        return $baseUrl;
     }
 
     private function singleProductUrl(): string

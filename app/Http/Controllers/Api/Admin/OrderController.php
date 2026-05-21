@@ -935,8 +935,24 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $baseUrl = rtrim((string) config('services.api.base_url'), '/');
-        $endpoint = ($baseUrl !== '' ? $baseUrl : 'http://api.freelancerbangladesh.com') . '/orders/receive';
+        $userDomain = trim((string) config('services.panel.user_domain', ''));
+        if ($userDomain === '') {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'User domain not found. Please configure EFB_USER_DOMAIN.',
+            ], 422);
+        }
+
+        $baseUrl = rtrim((string) config('services.panel.base_url'), '/');
+        if ($baseUrl === '') {
+            return response()->json([
+                'success' => false,
+                'status' => 'failed',
+                'message' => 'Panel API is not configured. Set PANEL_API_BASE_URL in backend environment.',
+            ], 500);
+        }
+        $endpoint = $baseUrl . '/order/seller/public';
 
         $sentOrders = [];
         $failedOrders = [];
@@ -953,7 +969,7 @@ class OrderController extends Controller
 
             $this->recalculateOrderFinancials($order);
 
-            $payload = $this->buildDropshippingPayload($order, $sellerCode);
+            $payload = $this->buildDropshippingPayload($order, $sellerCode, $userDomain);
             $itemErrors = $payload['item_errors'] ?? [];
             unset($payload['item_errors']);
 
@@ -1831,7 +1847,7 @@ class OrderController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function buildDropshippingPayload(Order $order, string $sellerCode): array
+    private function buildDropshippingPayload(Order $order, string $sellerCode, string $userDomain): array
     {
         $shipping = $order->shipping;
         $customer = $order->customer;
@@ -1854,8 +1870,8 @@ class OrderController extends Controller
                         : null;
 
                     $itemErrors[] = $detailId
-                        ? "Missing product_sku for order item #{$detailId}."
-                        : 'Missing product_sku for one or more order items.';
+                        ? "Missing panel_product_id or panel_variant_id for order item #{$detailId}."
+                        : 'Missing panel product/variant mapping for one or more order items.';
                 }
 
                 return $mappedItem;
@@ -1872,24 +1888,22 @@ class OrderController extends Controller
         }
 
         $payload = [
-            'seller_code' => $sellerCode,
-            'status' => 'received',
-            'courier_status' => 'pending',
-            'deliver_charge' => max(0, (float) ($order->shipping_charge ?? 0)),
-            'notes' => $order->note ?? '',
-            'customer_name' => $shipping?->name ?? $customer?->name ?? '',
-            'customer_phone' => $shipping?->phone ?? $customer?->phone ?? '',
-            'district' => $districtName,
-            'location_type' => $shipping?->area ?? '',
-            'area' => $shipping?->area ?? '',
-            'address' => $shipping?->address ?? '',
+            'sellerCode' => $sellerCode,
+            'userDomain' => $userDomain,
+            'sellerOrderRef' => 'EFB-' . (string) ($order->invoice_id ?? $order->id),
+            'idempotencyKey' => 'efb-admin-ds-order-' . (int) $order->id,
+            'customerName' => $shipping?->name ?? $customer?->name ?? '',
+            'customerPhone' => $shipping?->phone ?? $customer?->phone ?? '',
+            'customerAddress' => $shipping?->address ?? '',
+            'customerArea' => $shipping?->area ?? '',
+            'customerDistrict' => $districtName,
+            'customerNote' => (string) ($order->note ?? ''),
+            'deliveryCharge' => max(0, (float) ($order->shipping_charge ?? 0)),
+            'packagingCharge' => 0,
+            'discountTotal' => max(0, (float) ($order->discount ?? 0)),
+            'codCharge' => 0,
             'items' => $items,
         ];
-
-        $customerEmail = $shipping?->email ?? $customer?->email ?? null;
-        if (is_string($customerEmail) && trim($customerEmail) !== '') {
-            $payload['customer_email'] = trim($customerEmail);
-        }
 
         if (!empty($itemErrors)) {
             $payload['item_errors'] = array_values(array_unique($itemErrors));
@@ -1948,27 +1962,30 @@ class OrderController extends Controller
         if (!$detail) {
             return null;
         }
+        $productId = isset($detail->panel_product_id) && is_numeric($detail->panel_product_id)
+            ? (int) $detail->panel_product_id
+            : null;
+        $variantId = isset($detail->panel_variant_id) && is_numeric($detail->panel_variant_id)
+            ? (int) $detail->panel_variant_id
+            : null;
+        $sellerProductId = isset($detail->panel_seller_product_id) && is_numeric($detail->panel_seller_product_id)
+            ? (int) $detail->panel_seller_product_id
+            : null;
 
-        $productSku = $this->resolveDropshippingProductSku($detail);
-        if ($productSku === '') {
+        if (!$productId || !$variantId) {
             return null;
         }
 
-        $productSizeId = $this->normalizeDropshippingSizeId(
-            $detail->product_size_id ?? $detail->product_size ?? null
-        );
-        $productColorIds = $this->normalizeDropshippingColorIds(
-            $detail->product_color_id ?? $detail->product_color ?? null
-        );
-        $productColorId = !empty($productColorIds) ? $productColorIds[0] : null;
-
-        return [
-            'product_sku' => $productSku,
-            'quantity' => (int) ($detail->qty ?? 0),
-            'price' => (float) ($detail->sale_price ?? 0),
-            'product_size_id' => $productSizeId,
-            'product_color_id' => $productColorId,
+        $payload = [
+            'productId' => $productId,
+            'variantId' => $variantId,
+            'quantity' => max(1, (int) ($detail->qty ?? 1)),
+            'unitSalePrice' => (float) ($detail->sale_price ?? 0),
         ];
+        if ($sellerProductId) {
+            $payload['sellerProductId'] = $sellerProductId;
+        }
+        return $payload;
     }
 
     private function resolveDropshippingProductSku(mixed $detail): string

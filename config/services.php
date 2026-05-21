@@ -33,6 +33,7 @@ return [
 
     'api' => [
         'base_url' => env('API_BASE_URL'),
+        'external_image_base' => env('EXTERNAL_IMAGE_BASE_URL', env('VITE_EXTERNAL_IMAGE_BASE', env('API_BASE_URL'))),
         'timeout' => env('API_TIMEOUT', 20),
         'connect_timeout' => env('API_CONNECT_TIMEOUT', 5),
         'retry' => env('API_RETRY', 2),
@@ -62,6 +63,14 @@ return [
 
     'dropshipping' => [
         'seller_code' => env('EFB_SELLER_CODE'),
+    ],
+
+    'panel' => [
+        'base_url' => env('PANEL_API_BASE_URL', 'https://api.freelancerbangladesh.com'),
+        'seller_code' => env('EFB_SELLER_CODE'),
+        'user_domain' => env('EFB_USER_DOMAIN'),
+        'timeout' => env('PANEL_API_TIMEOUT', 20),
+        'connect_timeout' => env('PANEL_API_CONNECT_TIMEOUT', 5),
     ],
 
     'pathao' => [

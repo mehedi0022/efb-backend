@@ -18,6 +18,7 @@ class Order extends Model
         'shipping_charge' => 'integer',
         'is_complete_order' => 'boolean',
         'courier_synced_at' => 'datetime',
+        'panel_synced_at' => 'datetime',
         'courier_response_payload' => 'array',
     ];
 

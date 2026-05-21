@@ -77,6 +77,9 @@ class CartController extends Controller
             'price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:1',
             'options' => 'nullable|array',
+            'options.panel_product_id' => 'required|integer|min:1',
+            'options.panel_variant_id' => 'required|integer|min:1',
+            'options.panel_seller_product_id' => 'nullable|integer|min:1',
         ]);
 
         if ($validator->fails()) {

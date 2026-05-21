@@ -5,305 +5,426 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 class ExternalProxyController extends Controller
 {
+    private function sellerCode(): string
+    {
+        return trim((string) config('services.panel.seller_code', ''));
+    }
+
+    private function userDomain(): string
+    {
+        return trim((string) config('services.panel.user_domain', ''));
+    }
+
+    private function sellerScopeQuery(): array
+    {
+        return [
+            'sellerCode' => $this->sellerCode(),
+            'userDomain' => $this->userDomain(),
+        ];
+    }
+
     private function baseUrl(): string
     {
-        $base = trim((string) config('services.api.base_url'));
-        if ($base === '') {
-            $base = trim((string) env('API_BASE_URL'));
-        }
-        return rtrim($base !== '' ? $base : 'https://api.freelancerbangladesh.com', '/');
+        return rtrim((string) config('services.api.base_url', ''), '/');
     }
 
-    private function extractHost(string $value): string
+    private function ensureConfigured()
     {
-        $value = trim($value);
-        if ($value === '') {
-            return '';
+        if ($this->baseUrl() === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'External API is not configured. Set API_BASE_URL in backend environment.',
+            ], 500);
+        }
+        if ($this->sellerCode() === '' || $this->userDomain() === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Seller scope is missing. Set EFB_SELLER_CODE and EFB_USER_DOMAIN in backend environment.',
+            ], 500);
         }
 
-        $host = parse_url($value, PHP_URL_HOST);
-        if (!$host) {
-            $host = preg_replace('#^https?://#i', '', $value);
-            $host = preg_replace('#/.*$#', '', (string) $host);
-        }
-
-        return strtolower((string) $host);
+        return null;
     }
 
-    private function normalizeDomain(string $appUrl): string
+    private function http()
     {
-        $host = $this->extractHost($appUrl);
-        if ($host === '') {
-            return 'www.freelancerbangladesh.com';
-        }
-
-        $host = preg_replace('#^www\.#i', '', $host);
-
-        return 'www.' . $host;
+        return Http::timeout(20)->connectTimeout(5)->acceptJson();
     }
 
-    private function domainCandidates(?Request $request = null): array
+    private function externalError($response)
     {
-        $hosts = [];
-
-        $configuredHost = $this->extractHost((string) config('app.url', ''));
-        if ($configuredHost !== '') {
-            $hosts[] = $configuredHost;
-        }
-
-        if ($request !== null) {
-            $requestHost = $this->extractHost((string) $request->getHost());
-            if ($requestHost !== '') {
-                $hosts[] = $requestHost;
-            }
-        }
-
-        if (empty($hosts)) {
-            return ['www.freelancerbangladesh.com', 'freelancerbangladesh.com'];
-        }
-
-        $domains = [];
-        foreach (array_unique($hosts) as $host) {
-            $base = preg_replace('#^www\.#i', '', $host);
-            if ($base === '') {
-                continue;
-            }
-            $domains[] = 'www.' . $base;
-            $domains[] = $base;
-        }
-
-        return array_values(array_unique(array_filter($domains)));
-    }
-
-    private function normalizeProductSlug(string $slug): string
-    {
-        $value = trim($slug);
-        if ($value === '') {
-            return '';
-        }
-
-        $pathFromUrl = parse_url($value, PHP_URL_PATH);
-        if (is_string($pathFromUrl) && $pathFromUrl !== '') {
-            $value = $pathFromUrl;
-        }
-
-        $value = trim($value);
-        $value = explode('?', $value)[0];
-        $value = explode('#', $value)[0];
-        $value = trim($value, '/');
-
-        if ($value === '') {
-            return '';
-        }
-
-        $segments = array_values(array_filter(explode('/', $value), static fn ($segment) => trim($segment) !== ''));
-        if (empty($segments)) {
-            return '';
-        }
-
-        return trim((string) end($segments));
-    }
-
-    private function productSlugCandidates(string $slug): array
-    {
-        $raw = trim($slug);
-        if ($raw === '') {
-            return [];
-        }
-
-        $decoded = rawurldecode($raw);
-        $normalizedRaw = $this->normalizeProductSlug($raw);
-        $normalizedDecoded = $this->normalizeProductSlug($decoded);
-
-        $candidates = [
-            $normalizedRaw,
-            $normalizedDecoded,
-        ];
-
-        if ($normalizedRaw !== '') {
-            $candidates[] = rawurlencode($normalizedRaw);
-        }
-
-        if ($normalizedDecoded !== '') {
-            $candidates[] = rawurlencode($normalizedDecoded);
-        }
-
-        return array_values(array_unique(array_filter($candidates)));
-    }
-
-    private function request(string|array $endpoints, array $params = [])
-    {
-        $endpointList = is_array($endpoints)
-            ? array_values(array_unique(array_filter(array_map(static fn ($endpoint) => trim((string) $endpoint), $endpoints))))
-            : [trim($endpoints)];
-
-        $lastResponseStatus = null;
-
-        foreach ($endpointList as $endpoint) {
-            if ($endpoint === '') {
-                continue;
-            }
-
-            try {
-                $response = Http::timeout(15)->connectTimeout(5)->get($endpoint, $params);
-            } catch (Throwable) {
-                continue;
-            }
-
-            if ($response->successful()) {
-                return response()->json($response->json(), $response->status());
-            }
-
-            $lastResponseStatus = $response->status();
-
-            // Fallback attempts are only useful for not-found variants.
-            if ($response->status() !== 404) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'External API request failed.',
-                    'status' => $response->status(),
-                ], $response->status() ?: 502);
-            }
+        $payload = $response->json();
+        $message = data_get($payload, 'message');
+        if (!is_string($message) || trim($message) === '') {
+            $message = 'External API request failed.';
         }
 
         return response()->json([
             'success' => false,
-            'message' => 'External API request failed.',
-            'status' => $lastResponseStatus ?? 404,
-        ], $lastResponseStatus ?: 502);
+            'message' => $message,
+            'upstream' => $payload,
+        ], $response->status());
+    }
+
+    private function toImageUrl(?string $path): string
+    {
+        $raw = trim((string) ($path ?? ''));
+        if ($raw === '') return '';
+        if (preg_match('/^https?:\/\//i', $raw)) return $raw;
+
+        $base = rtrim((string) config('services.api.external_image_base', ''), '/');
+        if ($base === '') {
+            $base = $this->baseUrl();
+        }
+        if ($base === '') return $raw;
+        return $base . '/' . ltrim($raw, '/');
+    }
+
+    private function mapProduct(array $row): array
+    {
+        $priceValue = data_get($row, 'sellerProduct.price');
+        if ($priceValue === null) {
+            $priceValue = data_get($row, 'suggestedPrice.value');
+        }
+        if ($priceValue === null) {
+            $priceValue = data_get($row, 'suggestedPrice.min', 0);
+        }
+
+        return [
+            'id' => $row['id'] ?? null,
+            'price' => (float) ($priceValue ?? 0),
+            'previous_price' => null,
+            'available_stock' => (int) ($row['totalStock'] ?? 0),
+            'product_info' => [
+                'id' => $row['id'] ?? null,
+                'name' => $row['name'] ?? '',
+                'slug' => $row['slug'] ?? '',
+                'thumbnail' => $this->toImageUrl($row['thumbnail'] ?? $row['coverImage'] ?? ''),
+                'price' => (float) ($priceValue ?? 0),
+                'new_price' => (float) ($priceValue ?? 0),
+                'old_price' => data_get($row, 'sellerProduct.previousePrice'),
+                'available_stock' => (int) ($row['totalStock'] ?? 0),
+                'panel_product_id' => $row['id'] ?? null,
+                'panel_variant_id' => data_get($row, 'variants.0.id'),
+                'panel_seller_product_id' => data_get($row, 'sellerProduct.id'),
+            ],
+        ];
+    }
+
+    private function getCategoriesFlat(): array
+    {
+        $response = $this->http()->get($this->baseUrl() . '/api/v1/product/public/categories', $this->sellerScopeQuery());
+        if (!$response->successful()) return [];
+        $payload = $response->json();
+
+        $tree = is_array($payload) ? ($payload['data'] ?? []) : [];
+        $flat = [];
+
+        $walk = function ($nodes, $parent = null) use (&$walk, &$flat) {
+            foreach ((array) $nodes as $node) {
+                $flat[] = [
+                    'id' => $node['id'] ?? null,
+                    'name' => $node['name'] ?? '',
+                    'slug' => $node['slug'] ?? '',
+                    'parentId' => $node['parentId'] ?? $parent,
+                ];
+                $walk($node['children'] ?? [], $node['id'] ?? null);
+            }
+        };
+        $walk($tree);
+        return $flat;
     }
 
     public function featuredCategories(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/categories/feature/{$domain}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $categories = $this->getCategoriesFlat();
+        $topLevel = array_values(array_filter($categories, fn($c) => empty($c['parentId'])));
+        $limit = max(1, (int) $request->input('limit', 20));
 
-        $params = [
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 20),
-        ];
-
-        return $this->request($endpoint, $params);
+        return response()->json([
+            'success' => true,
+            'data' => array_slice(array_map(fn($c) => [
+                'id' => $c['id'],
+                'name' => $c['name'],
+                'slug' => $c['slug'],
+                'category_name' => $c['name'],
+                'category_slug' => $c['slug'],
+            ], $topLevel), 0, $limit),
+            'meta' => ['page' => 1, 'last_page' => 1],
+        ]);
     }
 
     public function menuCategories(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/categories/menu/{$domain}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $categories = $this->getCategoriesFlat();
+        $byParent = [];
+        foreach ($categories as $category) {
+            $byParent[$category['parentId'] ?? 0][] = $category;
+        }
 
-        $params = [
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 40),
-        ];
+        $topLevel = $byParent[0] ?? [];
+        $data = array_map(function ($category) use ($byParent) {
+            $children = $byParent[$category['id']] ?? [];
+            return [
+                'id' => $category['id'],
+                'category_name' => $category['name'],
+                'category_slug' => $category['slug'],
+                'childern' => array_map(fn($child) => [
+                    'id' => $child['id'],
+                    'category_name' => $child['name'],
+                    'category_slug' => $child['slug'],
+                ], $children),
+            ];
+        }, $topLevel);
 
-        return $this->request($endpoint, $params);
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+            'meta' => ['page' => 1, 'last_page' => 1],
+        ]);
     }
 
     public function topSell(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/products/top-sell/{$domain}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $page = max(1, (int) $request->input('page', 1));
+        $limit = max(1, (int) $request->input('limit', 12));
 
-        $params = [
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 12),
-        ];
+        $response = $this->http()->get($this->baseUrl() . '/api/v1/product/public', [
+            ...$this->sellerScopeQuery(),
+            'page' => $page,
+            'limit' => $limit,
+        ]);
+        if (!$response->successful()) {
+            return $this->externalError($response);
+        }
+        $payload = $response->json();
+        $rows = $payload['data'] ?? [];
 
-        return $this->request($endpoint, $params);
+        return response()->json([
+            'success' => true,
+            'data' => array_map(fn($row) => $this->mapProduct($row), $rows),
+            'meta' => [
+                'page' => data_get($payload, 'meta.page', $page),
+                'last_page' => data_get($payload, 'meta.totalPages', 1),
+                'total' => data_get($payload, 'meta.total', count($rows)),
+            ],
+        ]);
     }
 
     public function hotDeals(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/products/hot-deal/{$domain}";
-
-        $params = [
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 12),
-        ];
-
-        return $this->request($endpoint, $params);
+        return $this->topSell($request);
     }
 
     public function categoryProducts(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/category-products/{$domain}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $prodPage = max(1, (int) $request->input('prod_page', 1));
+        $prodLimit = max(1, (int) $request->input('prod_limit', 12));
 
-        $params = [
-            'cat_page' => $request->input('cat_page', 1),
-            'cat_limit' => $request->input('cat_limit', 10),
-            'prod_page' => $request->input('prod_page', 1),
-            'prod_limit' => $request->input('prod_limit', 12),
-        ];
+        $categoryResponse = $this->http()->get($this->baseUrl() . '/api/v1/product/public/categories', $this->sellerScopeQuery());
+        $productResponse = $this->http()->get($this->baseUrl() . '/api/v1/product/public', [
+            ...$this->sellerScopeQuery(),
+            'page' => $prodPage,
+            'limit' => $prodLimit * 10,
+        ]);
 
-        return $this->request($endpoint, $params);
+        if (!$categoryResponse->successful() || !$productResponse->successful()) {
+            $failed = !$categoryResponse->successful() ? $categoryResponse : $productResponse;
+            return $this->externalError($failed);
+        }
+
+        $categories = $this->getCategoriesFlat();
+        $products = $productResponse->json()['data'] ?? [];
+        $grouped = [];
+        foreach ($products as $product) {
+            $cat = $product['category'] ?? null;
+            if (!$cat || empty($cat['id'])) continue;
+            $grouped[$cat['id']][] = $this->mapProduct($product);
+        }
+
+        $data = [];
+        foreach ($categories as $category) {
+            if (empty($grouped[$category['id']])) continue;
+            $data[] = [
+                'id' => $category['id'],
+                'category_name' => $category['name'],
+                'category_slug' => $category['slug'],
+                'products' => array_slice($grouped[$category['id']], 0, $prodLimit),
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+            'meta' => [
+                'product_pagination' => [
+                    'current_page' => data_get($productResponse->json(), 'meta.page', $prodPage),
+                    'last_page' => data_get($productResponse->json(), 'meta.totalPages', 1),
+                ],
+            ],
+        ]);
     }
 
     public function productDetails(Request $request, string $slug)
     {
-        $slugCandidates = $this->productSlugCandidates($slug);
-        if (empty($slugCandidates)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'External API request failed.',
-                'status' => 404,
-            ], 404);
+        if ($error = $this->ensureConfigured()) return $error;
+        $response = $this->http()->get($this->baseUrl() . '/api/v1/product/public/slug/' . trim($slug), $this->sellerScopeQuery());
+        if (!$response->successful()) {
+            return $this->externalError($response);
         }
 
-        $domains = $this->domainCandidates($request);
-        $endpoints = [];
-        foreach ($domains as $domain) {
-            foreach ($slugCandidates as $candidateSlug) {
-                $endpoints[] = $this->baseUrl() . "/products/slug/{$domain}/{$candidateSlug}";
-            }
-        }
+        $item = $response->json()['data'] ?? [];
+        $variant = ($item['variants'][0] ?? []);
+        $basePrice = data_get($item, 'summary.priceRange.value', data_get($item, 'summary.priceRange.min', 0));
+        $price = data_get($item, 'sellerProduct.price', $basePrice);
 
-        return $this->request($endpoints);
+        $coverImage = $this->toImageUrl($item['coverImage'] ?? '');
+        $galleryImages = array_map(
+            fn($img) => $this->toImageUrl($img['url'] ?? ''),
+            $item['images'] ?? []
+        );
+        $allImages = array_values(array_filter(array_unique(array_merge(
+            $coverImage !== '' ? [$coverImage] : [],
+            $galleryImages
+        ))));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $item['id'] ?? null,
+                'name' => $item['name'] ?? '',
+                'slug' => $item['slug'] ?? '',
+                'productName' => $item['name'] ?? '',
+                'price' => (float) ($price ?? 0),
+                'previousPrice' => data_get($item, 'sellerProduct.previousePrice'),
+                'sku' => $variant['sku'] ?? '',
+                'category_name' => data_get($item, 'category.name', ''),
+                'description' => $item['description'] ?? '',
+                'available_stock' => (int) data_get($item, 'summary.totalStock', 0),
+                'images' => array_map(fn($img) => ['image' => $img], $allImages),
+                'sizes' => array_map(fn($v) => ['id' => $v['id'], 'name' => $v['sku'] ?? ('Variant ' . $v['id'])], $item['variants'] ?? []),
+                'colors' => [],
+                'variants' => array_map(fn($v) => [
+                    'id' => $v['id'] ?? null,
+                    'sku' => $v['sku'] ?? '',
+                    'price' => (float) ($v['suggestedPrice'] ?? $price ?? 0),
+                    'stock' => (int) ($v['stock'] ?? 0),
+                    'attributes' => array_map(fn($a) => [
+                        'attributeName' => data_get($a, 'value.attribute.name', ''),
+                        'valueName' => data_get($a, 'value.value', ''),
+                    ], $v['attributes'] ?? []),
+                ], $item['variants'] ?? []),
+                'panel_product_id' => $item['id'] ?? null,
+                'panel_variant_id' => $variant['id'] ?? null,
+                'panel_seller_product_id' => data_get($item, 'sellerProduct.id'),
+                'related_products' => [],
+            ],
+        ]);
     }
 
     public function categoryProductsBySlug(Request $request, string $slug)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/products/category/{$domain}/{$slug}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $page = max(1, (int) $request->input('page', 1));
+        $limit = max(1, (int) $request->input('limit', 20));
 
-        $params = [
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 20),
-        ];
+        $categories = $this->getCategoriesFlat();
+        $target = collect($categories)->first(fn($c) => ($c['slug'] ?? '') === trim($slug));
+        if (!$target) {
+            return response()->json(['success' => true, 'data' => [], 'meta' => ['page' => $page, 'last_page' => 1, 'total' => 0]]);
+        }
 
-        return $this->request($endpoint, $params);
+        $response = $this->http()->get($this->baseUrl() . '/api/v1/product/public', [
+            ...$this->sellerScopeQuery(),
+            'page' => $page,
+            'limit' => $limit,
+            'categoryId' => $target['id'],
+        ]);
+        if (!$response->successful()) {
+            return $this->externalError($response);
+        }
+        $payload = $response->json();
+
+        return response()->json([
+            'success' => true,
+            'data' => array_map(fn($row) => $this->mapProduct($row), $payload['data'] ?? []),
+            'meta' => [
+                'page' => data_get($payload, 'meta.page', $page),
+                'last_page' => data_get($payload, 'meta.totalPages', 1),
+                'total' => data_get($payload, 'meta.total', 0),
+            ],
+        ]);
     }
 
     public function userSubcategoryProducts(Request $request, string $slug)
-{
-    $domain = $this->normalizeDomain(config('app.url', ''));
-    
-    $endpoint = $this->baseUrl() . "/products/get-user-subcategory-products/{$domain}/{$slug}";
-
-    $params = [
-        'page' => $request->input('page', 1),
-        'limit' => $request->input('limit', 20),
-    ];
-
-    return $this->request($endpoint, $params);
-}
+    {
+        return $this->categoryProductsBySlug($request, $slug);
+    }
 
     public function searchProducts(Request $request)
     {
-        $domain = $this->normalizeDomain(config('app.url', ''));
-        $endpoint = $this->baseUrl() . "/products/get-product/{$domain}";
+        if ($error = $this->ensureConfigured()) return $error;
+        $page = max(1, (int) $request->input('page', 1));
+        $limit = max(1, (int) $request->input('limit', 20));
+        $search = trim((string) $request->input('keyword', $request->input('search', '')));
 
-        $params = [
-            'search' => $request->input('keyword', $request->input('search', '')),
-            'page' => $request->input('page', 1),
-            'limit' => $request->input('limit', 20),
-        ];
+        $response = $this->http()->get($this->baseUrl() . '/api/v1/product/public', [
+            ...$this->sellerScopeQuery(),
+            'page' => $page,
+            'limit' => $limit,
+            'search' => $search,
+        ]);
+        if (!$response->successful()) {
+            return $this->externalError($response);
+        }
+        $payload = $response->json();
 
-        return $this->request($endpoint, $params);
+        return response()->json([
+            'success' => true,
+            'data' => array_map(fn($row) => $this->mapProduct($row), $payload['data'] ?? []),
+            'meta' => [
+                'page' => data_get($payload, 'meta.page', $page),
+                'last_page' => data_get($payload, 'meta.totalPages', 1),
+                'total' => data_get($payload, 'meta.total', 0),
+            ],
+        ]);
+    }
+
+    public function shippingCharges(Request $request)
+    {
+        if ($error = $this->ensureConfigured()) return $error;
+
+        $response = $this->http()->get(
+            $this->baseUrl() . '/api/v1/product/public/shipping-charge',
+            $this->sellerScopeQuery()
+        );
+        if (!$response->successful()) {
+            return $this->externalError($response);
+        }
+
+        $row = $response->json('data') ?? [];
+        $amount = (float) data_get($row, 'amount', 0);
+        $name = trim((string) data_get($row, 'name', 'Delivery Charge'));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                [
+                    'id' => data_get($row, 'id', 1),
+                    'name' => $name !== '' ? $name : 'Delivery Charge',
+                    'amount' => $amount,
+                ],
+            ],
+            'meta' => [
+                'source' => 'external_seller_shipping_charge',
+            ],
+        ]);
     }
 }

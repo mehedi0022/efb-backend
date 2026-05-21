@@ -43,6 +43,10 @@ class CheckoutController extends Controller
                 'order_id' => $order->id,
                 'invoice_id' => $order->invoice_id,
                 'amount' => $order->amount,
+                'panel_sync_status' => $order->panel_sync_status,
+                'panel_order_id' => $order->panel_order_id,
+                'panel_order_no' => $order->panel_order_no,
+                'panel_sync_error' => $order->panel_sync_error,
                 'payment_url' => $this->getPaymentUrl($order, $request->payment_method),
             ]);
         } catch (\Throwable $exception) {

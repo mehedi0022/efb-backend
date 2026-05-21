@@ -70,6 +70,7 @@ Route::prefix('v1')->middleware('ip.block')->group(function () {
     Route::get('/external/product/{slug}', [ExternalProxyController::class, 'productDetails']);
     Route::get('/external/search', [ExternalProxyController::class, 'searchProducts']);
     Route::get('/external/user-subcategory-products/{slug}',[ExternalProxyController::class, 'userSubcategoryProducts']);
+    Route::get('/external/shipping-charges', [ExternalProxyController::class, 'shippingCharges']);
     Route::get('/shipping-charges', [ShippingChargeController::class, 'index']);
 
     // Customer authentication
