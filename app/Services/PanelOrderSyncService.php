@@ -35,6 +35,16 @@ class PanelOrderSyncService
             $sellerProductId = $this->toPositiveInt($options['panel_seller_product_id'] ?? null);
             $quantity = max(1, (int) ($line['quantity'] ?? $item?->quantity ?? 1));
             $unitSalePrice = (float) ($line['sale_price'] ?? $item?->price ?? 0);
+            $selectedAttributes = is_array($options['selected_attributes'] ?? null)
+                ? $options['selected_attributes']
+                : [];
+            $variationSku = $this->normalizeNullableString(
+                $options['variation_sku']
+                ?? $options['sku']
+                ?? $options['product_sku']
+                ?? null
+            );
+            $wholesalePriceSnapshot = $this->toNonNegativeFloat($options['wholesale_price_snapshot'] ?? null);
 
             if (!$productId || !$variantId) {
                 throw ValidationException::withMessages([
@@ -48,6 +58,18 @@ class PanelOrderSyncService
                 'quantity' => $quantity,
                 'unitSalePrice' => round($unitSalePrice, 2),
             ];
+
+            if ($variationSku) {
+                $row['variationSku'] = $variationSku;
+            }
+
+            if ($selectedAttributes !== []) {
+                $row['selectedAttributes'] = $selectedAttributes;
+            }
+
+            if ($wholesalePriceSnapshot !== null) {
+                $row['wholesalePriceSnapshot'] = $wholesalePriceSnapshot;
+            }
 
             if ($sellerProductId) {
                 $row['sellerProductId'] = $sellerProductId;
@@ -125,5 +147,12 @@ class PanelOrderSyncService
     {
         $text = trim((string) ($value ?? ''));
         return $text === '' ? null : $text;
+    }
+
+    private function toNonNegativeFloat(mixed $value): ?float
+    {
+        if (!is_numeric($value)) return null;
+        $number = (float) $value;
+        return $number >= 0 ? round($number, 2) : null;
     }
 }

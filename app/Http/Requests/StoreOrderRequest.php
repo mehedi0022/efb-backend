@@ -25,7 +25,7 @@ class StoreOrderRequest extends FormRequest
             'name' => 'required|string|max:255',
             'phone' => 'required|string|max:20',
             'address' => 'required|string',
-            'area' => 'nullable|integer|exists:shipping_charges,id', // Legacy uses shipping_charges.id as area
+            'area' => 'nullable|integer',
             'district' => 'nullable|string|max:255',
             'payment_method' => 'nullable|string|in:cod,bkash,shurjopay',
             'email' => 'nullable|email',

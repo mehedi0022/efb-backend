@@ -16,6 +16,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -89,8 +90,9 @@ class OrderService
             $discount = 0; // consistent with basic port for now
 
             $areaId = $data['area'] ?? null;
-            $shippingCharge = $areaId ? ShippingCharge::find($areaId) : null;
-            $areaShippingFee = $shippingCharge ? (int) $shippingCharge->amount : 0;
+            $hasExternalItems = $cart->items->contains(fn ($item) => trim((string) ($item->external_product_id ?? '')) !== '');
+            $resolvedShipping = $this->resolveCheckoutShipping($data, $areaId, $hasExternalItems);
+            $areaShippingFee = $resolvedShipping['amount'];
             $courierCharge = $this->resolveCourierCharge();
             $shippingFee = $areaShippingFee + $courierCharge;
             
@@ -108,7 +110,7 @@ class OrderService
                 'customer_id' => $customer->id,
                 'order_status' => (string) $newOrderStatusId,
                 'ip_address' => $normalizedIpAddress,
-                 // 'note' and 'district' removed as they don't exist in migration
+                'district' => is_numeric($data['district'] ?? null) ? (int) $data['district'] : null,
             ]);
 
             // 4. Create Order Details
@@ -147,6 +149,13 @@ class OrderService
                 $productColorId = $options['product_color_id'] ?? $options['color_id'] ?? null;
                 $productSize = $options['product_size'] ?? $options['size'] ?? null;
                 $productColor = $options['product_color'] ?? $options['color'] ?? null;
+                $selectedAttributes = is_array($options['selected_attributes'] ?? null)
+                    ? $options['selected_attributes']
+                    : [];
+                $attributeSummary = $this->summarizeSelectedAttributes($selectedAttributes);
+                if (!$productSize && $attributeSummary !== '') {
+                    $productSize = $attributeSummary;
+                }
                 $panelProductId = $this->toPositiveInt($options['panel_product_id'] ?? null);
                 $panelVariantId = $this->toPositiveInt($options['panel_variant_id'] ?? null);
                 $panelSellerProductId = $this->toPositiveInt($options['panel_seller_product_id'] ?? null);
@@ -186,7 +195,7 @@ class OrderService
                 'name' => $data['name'],
                 'phone' => $data['phone'],
                 'address' => $data['address'],
-                'area' => $shippingCharge?->name ?? (is_scalar($areaId) ? (string) $areaId : ''),
+                'area' => $resolvedShipping['name'],
                 'ip_address' => $normalizedIpAddress,
                 // Add other fields as needed
             ]);
@@ -432,6 +441,87 @@ class OrderService
         return max(0, (int) ($setting->courier_charge ?? 0));
     }
 
+    protected function resolveCheckoutShipping(array $data, mixed $areaId, bool $hasExternalItems): array
+    {
+        $shippingId = $this->toPositiveInt($areaId);
+        if (!$shippingId) {
+            throw ValidationException::withMessages([
+                'area' => ['Please select a delivery area.'],
+            ]);
+        }
+
+        if (!$hasExternalItems) {
+            $shippingCharge = ShippingCharge::query()->find($shippingId);
+            if (!$shippingCharge) {
+                throw ValidationException::withMessages([
+                    'area' => ['Selected delivery area is not valid.'],
+                ]);
+            }
+
+            return [
+                'id' => (int) $shippingCharge->id,
+                'name' => trim((string) ($shippingCharge->name ?? 'Delivery Charge')),
+                'amount' => max(0, (int) ($shippingCharge->amount ?? 0)),
+                'source' => 'local',
+            ];
+        }
+
+        $districtId = $this->toPositiveInt($data['district'] ?? null);
+        if (!$districtId) {
+            throw ValidationException::withMessages([
+                'district' => ['Please select your district.'],
+            ]);
+        }
+
+        $baseUrl = rtrim((string) config('services.api.base_url', ''), '/');
+        $sellerCode = trim((string) config('services.panel.seller_code', ''));
+        $userDomain = trim((string) config('services.panel.user_domain', ''));
+        if ($baseUrl === '' || $sellerCode === '' || $userDomain === '') {
+            throw ValidationException::withMessages([
+                'area' => ['External shipping API is not configured.'],
+            ]);
+        }
+
+        $response = Http::timeout((int) config('services.api.timeout', 20))
+            ->connectTimeout((int) config('services.api.connect_timeout', 5))
+            ->acceptJson()
+            ->get($baseUrl . '/api/v1/product/public/shipping-charge', [
+                'sellerCode' => $sellerCode,
+                'userDomain' => $userDomain,
+                'districtId' => $districtId,
+            ]);
+
+        if (!$response->successful()) {
+            throw ValidationException::withMessages([
+                'area' => ['Unable to load external delivery charge right now.'],
+            ]);
+        }
+
+        $zones = data_get($response->json(), 'data.zones', []);
+        if (!is_array($zones) || count($zones) === 0) {
+            $row = data_get($response->json(), 'data', []);
+            $zones = is_array($row) ? [$row] : [];
+        }
+
+        foreach ($zones as $zone) {
+            if ((int) data_get($zone, 'id') !== $shippingId) {
+                continue;
+            }
+
+            $name = trim((string) data_get($zone, 'name', data_get($zone, 'zoneName', 'Delivery Charge')));
+            return [
+                'id' => $shippingId,
+                'name' => $name !== '' ? $name : 'Delivery Charge',
+                'amount' => max(0, (int) round((float) data_get($zone, 'amount', 0))),
+                'source' => 'external',
+            ];
+        }
+
+        throw ValidationException::withMessages([
+            'area' => ['Selected delivery area is not available for this district.'],
+        ]);
+    }
+
     protected function normalizeIpAddress(?string $value): string
     {
         $normalized = strtolower(trim((string) $value));
@@ -458,5 +548,38 @@ class OrderService
         if (!is_numeric($value)) return null;
         $number = (int) $value;
         return $number > 0 ? $number : null;
+    }
+
+    protected function summarizeSelectedAttributes(array $attributes): string
+    {
+        $parts = [];
+        foreach ($attributes as $attribute) {
+            if (!is_array($attribute)) {
+                continue;
+            }
+
+            $name = trim((string) (
+                $attribute['attribute_name']
+                ?? $attribute['attributeName']
+                ?? $attribute['attribute_slug']
+                ?? $attribute['attributeSlug']
+                ?? ''
+            ));
+            $label = trim((string) (
+                $attribute['label']
+                ?? $attribute['valueName']
+                ?? $attribute['value_name']
+                ?? $attribute['value']
+                ?? ''
+            ));
+
+            if ($label === '') {
+                continue;
+            }
+
+            $parts[] = $name !== '' ? "{$name}: {$label}" : $label;
+        }
+
+        return implode(', ', $parts);
     }
 }

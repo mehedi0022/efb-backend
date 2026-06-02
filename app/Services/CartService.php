@@ -209,6 +209,17 @@ class CartService
             $normalized['product_sku'] = $sku;
         }
 
+        foreach ([
+            'variation_id',
+            'variation_sku',
+            'selected_attributes',
+            'wholesale_price_snapshot',
+        ] as $key) {
+            if (!array_key_exists($key, $normalized) && array_key_exists($key, $payload)) {
+                $normalized[$key] = $payload[$key];
+            }
+        }
+
         if (!array_key_exists('product_size', $normalized) && array_key_exists('size', $normalized)) {
             $normalized['product_size'] = $normalized['size'];
         }
@@ -450,6 +461,10 @@ class CartService
             'color_id',
             'size_variant_id',
             'catalog_size_id',
+            'variation_id',
+            'variation_sku',
+            'selected_attributes',
+            'wholesale_price_snapshot',
             'price',
             'selected_size_price',
         ] as $key) {

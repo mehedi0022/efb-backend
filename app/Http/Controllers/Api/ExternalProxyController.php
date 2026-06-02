@@ -83,6 +83,112 @@ class ExternalProxyController extends Controller
         return $base . '/' . ltrim($raw, '/');
     }
 
+    private function attributeSlug(mixed $value): string
+    {
+        $slug = strtolower(trim((string) $value));
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?: '';
+        return trim($slug, '-');
+    }
+
+    private function attributeValue(mixed $value): string
+    {
+        $text = strtolower(trim((string) $value));
+        return preg_replace('/\s+/', '-', $text) ?: $text;
+    }
+
+    private function normalizeVariantAttribute(array $attr): array
+    {
+        $attributeName = data_get($attr, 'attributeName', data_get($attr, 'attribute_name', data_get($attr, 'value.attribute.name', '')));
+        $label = data_get($attr, 'label', data_get($attr, 'valueName', data_get($attr, 'value_name', data_get($attr, 'value.value', data_get($attr, 'value', '')))));
+        $attributeSlug = data_get($attr, 'attributeSlug', data_get($attr, 'attribute_slug', $this->attributeSlug($attributeName)));
+        $value = data_get($attr, 'value', $this->attributeValue($label));
+
+        return [
+            'attributeId' => data_get($attr, 'attributeId', data_get($attr, 'attribute_id', data_get($attr, 'value.attribute.id'))),
+            'attribute_id' => data_get($attr, 'attribute_id', data_get($attr, 'attributeId', data_get($attr, 'value.attribute.id'))),
+            'attributeName' => $attributeName,
+            'attribute_name' => $attributeName,
+            'attributeSlug' => $attributeSlug,
+            'attribute_slug' => $attributeSlug,
+            'valueId' => data_get($attr, 'valueId', data_get($attr, 'value_id', data_get($attr, 'value.id'))),
+            'value_id' => data_get($attr, 'value_id', data_get($attr, 'valueId', data_get($attr, 'value.id'))),
+            'value' => $value,
+            'valueName' => $label,
+            'label' => $label,
+            'hex' => data_get($attr, 'hex'),
+        ];
+    }
+
+    private function normalizeVariation(array $variant, mixed $sellerPrice = null): array
+    {
+        $price = data_get($variant, 'price', data_get($variant, 'suggestedPrice', data_get($variant, 'suggested_price', $sellerPrice)));
+        $image = $this->toImageUrl((string) data_get($variant, 'image', ''));
+
+        return [
+            'id' => data_get($variant, 'id'),
+            'sku' => data_get($variant, 'sku', ''),
+            'price' => (float) ($price ?? 0),
+            'suggestedPrice' => (float) (data_get($variant, 'suggestedPrice', data_get($variant, 'suggested_price', $price)) ?? 0),
+            'suggested_price' => (float) (data_get($variant, 'suggested_price', data_get($variant, 'suggestedPrice', $price)) ?? 0),
+            'wholesalePrice' => (float) (data_get($variant, 'wholesalePrice', data_get($variant, 'wholesale_price', 0)) ?? 0),
+            'wholesale_price' => (float) (data_get($variant, 'wholesale_price', data_get($variant, 'wholesalePrice', 0)) ?? 0),
+            'stock' => (int) (data_get($variant, 'stock', 0) ?? 0),
+            'inStock' => (bool) data_get($variant, 'inStock', data_get($variant, 'in_stock', ((int) data_get($variant, 'stock', 0)) > 0)),
+            'in_stock' => (bool) data_get($variant, 'in_stock', data_get($variant, 'inStock', ((int) data_get($variant, 'stock', 0)) > 0)),
+            'image' => $image !== '' ? $image : null,
+            'images' => array_values(array_filter(array_map(fn($img) => $this->toImageUrl((string) data_get($img, 'url', data_get($img, 'image', $img))), (array) data_get($variant, 'images', [])))),
+            'attributes' => array_map(fn($attr) => $this->normalizeVariantAttribute((array) $attr), (array) data_get($variant, 'attributes', [])),
+        ];
+    }
+
+    private function normalizeAttributeGroups(array $item, array $variations): array
+    {
+        $groups = data_get($item, 'attributes', []);
+        if (is_array($groups) && count($groups) > 0) {
+            return array_map(function ($group) {
+                $name = data_get($group, 'name', '');
+                $slug = data_get($group, 'slug', $this->attributeSlug($name));
+                return [
+                    'id' => data_get($group, 'id'),
+                    'name' => $name,
+                    'slug' => $slug,
+                    'values' => array_values(array_map(fn($value) => [
+                        'id' => data_get($value, 'id'),
+                        'label' => data_get($value, 'label', data_get($value, 'value', '')),
+                        'value' => data_get($value, 'value', $this->attributeValue(data_get($value, 'label', ''))),
+                        'hex' => data_get($value, 'hex'),
+                    ], (array) data_get($group, 'values', []))),
+                ];
+            }, $groups);
+        }
+
+        $bySlug = [];
+        foreach ($variations as $variation) {
+            foreach ((array) ($variation['attributes'] ?? []) as $attr) {
+                $slug = $attr['attributeSlug'] ?? $attr['attribute_slug'] ?? '';
+                $value = $attr['value'] ?? '';
+                if ($slug === '' || $value === '') continue;
+                $bySlug[$slug] ??= [
+                    'id' => $attr['attributeId'] ?? $attr['attribute_id'] ?? null,
+                    'name' => $attr['attributeName'] ?? $attr['attribute_name'] ?? $slug,
+                    'slug' => $slug,
+                    'values' => [],
+                ];
+                $exists = collect($bySlug[$slug]['values'])->contains(fn($row) => ($row['value'] ?? '') === $value);
+                if (!$exists) {
+                    $bySlug[$slug]['values'][] = [
+                        'id' => $attr['valueId'] ?? $attr['value_id'] ?? null,
+                        'label' => $attr['label'] ?? $attr['valueName'] ?? $value,
+                        'value' => $value,
+                        'hex' => $attr['hex'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return array_values($bySlug);
+    }
+
     private function mapProduct(array $row): array
     {
         $priceValue = data_get($row, 'sellerProduct.price');
@@ -92,23 +198,39 @@ class ExternalProxyController extends Controller
         if ($priceValue === null) {
             $priceValue = data_get($row, 'suggestedPrice.min', 0);
         }
+        $variations = array_map(fn($v) => $this->normalizeVariation((array) $v, $priceValue), (array) ($row['variations'] ?? $row['variants'] ?? []));
+        $attributes = $this->normalizeAttributeGroups($row, $variations);
+        $type = data_get($row, 'type', data_get($row, 'productType', count($attributes) > 0 || count($variations) > 1 ? 'variable' : 'simple'));
+
+        $totalStock = (int) data_get($row, 'totalStock', data_get($row, 'summary.totalStock', array_sum(array_map(fn($v) => (int) ($v['stock'] ?? 0), $variations))));
 
         return [
             'id' => $row['id'] ?? null,
+            'type' => $type,
+            'product_type' => $type,
             'price' => (float) ($priceValue ?? 0),
             'previous_price' => null,
-            'available_stock' => (int) ($row['totalStock'] ?? 0),
+            'available_stock' => $totalStock,
+            'attributes' => $attributes,
+            'variations' => $variations,
+            'variants' => $variations,
             'product_info' => [
                 'id' => $row['id'] ?? null,
                 'name' => $row['name'] ?? '',
                 'slug' => $row['slug'] ?? '',
+                'type' => $type,
+                'product_type' => $type,
+                'sku' => data_get($variations, '0.sku'),
                 'thumbnail' => $this->toImageUrl($row['thumbnail'] ?? $row['coverImage'] ?? ''),
                 'price' => (float) ($priceValue ?? 0),
                 'new_price' => (float) ($priceValue ?? 0),
                 'old_price' => data_get($row, 'sellerProduct.previousePrice'),
-                'available_stock' => (int) ($row['totalStock'] ?? 0),
+                'available_stock' => $totalStock,
+                'attributes' => $attributes,
+                'variations' => $variations,
+                'variants' => $variations,
                 'panel_product_id' => $row['id'] ?? null,
-                'panel_variant_id' => data_get($row, 'variants.0.id'),
+                'panel_variant_id' => data_get($variations, '0.id'),
                 'panel_seller_product_id' => data_get($row, 'sellerProduct.id'),
             ],
         ];
@@ -281,9 +403,23 @@ class ExternalProxyController extends Controller
         }
 
         $item = $response->json()['data'] ?? [];
-        $variant = ($item['variants'][0] ?? []);
+        $rawVariants = (array) ($item['variations'] ?? $item['variants'] ?? []);
+        $variant = ($rawVariants[0] ?? []);
         $basePrice = data_get($item, 'summary.priceRange.value', data_get($item, 'summary.priceRange.min', 0));
         $price = data_get($item, 'sellerProduct.price', $basePrice);
+        $variations = array_map(fn($v) => $this->normalizeVariation((array) $v, $price), $rawVariants);
+        $attributes = $this->normalizeAttributeGroups((array) $item, $variations);
+        $type = data_get($item, 'type', data_get($item, 'productType', count($attributes) > 0 || count($variations) > 1 ? 'variable' : 'simple'));
+        $findAttributeValues = function (string $slug) use ($attributes) {
+            $group = collect($attributes)->first(fn($attr) => ($attr['slug'] ?? '') === $slug);
+            if (!$group) return [];
+            return array_map(fn($value) => [
+                'id' => $value['id'] ?? $value['value'] ?? null,
+                'name' => $value['label'] ?? $value['value'] ?? '',
+                'value' => $value['value'] ?? '',
+                'hex' => $value['hex'] ?? null,
+            ], (array) ($group['values'] ?? []));
+        };
 
         $coverImage = $this->toImageUrl($item['coverImage'] ?? '');
         $galleryImages = array_map(
@@ -301,28 +437,24 @@ class ExternalProxyController extends Controller
                 'id' => $item['id'] ?? null,
                 'name' => $item['name'] ?? '',
                 'slug' => $item['slug'] ?? '',
+                'type' => $type,
+                'productType' => $type,
+                'product_type' => $type,
                 'productName' => $item['name'] ?? '',
                 'price' => (float) ($price ?? 0),
                 'previousPrice' => data_get($item, 'sellerProduct.previousePrice'),
-                'sku' => $variant['sku'] ?? '',
+                'sku' => data_get($variant, 'sku', ''),
                 'category_name' => data_get($item, 'category.name', ''),
                 'description' => $item['description'] ?? '',
                 'available_stock' => (int) data_get($item, 'summary.totalStock', 0),
                 'images' => array_map(fn($img) => ['image' => $img], $allImages),
-                'sizes' => array_map(fn($v) => ['id' => $v['id'], 'name' => $v['sku'] ?? ('Variant ' . $v['id'])], $item['variants'] ?? []),
-                'colors' => [],
-                'variants' => array_map(fn($v) => [
-                    'id' => $v['id'] ?? null,
-                    'sku' => $v['sku'] ?? '',
-                    'price' => (float) ($v['suggestedPrice'] ?? $price ?? 0),
-                    'stock' => (int) ($v['stock'] ?? 0),
-                    'attributes' => array_map(fn($a) => [
-                        'attributeName' => data_get($a, 'value.attribute.name', ''),
-                        'valueName' => data_get($a, 'value.value', ''),
-                    ], $v['attributes'] ?? []),
-                ], $item['variants'] ?? []),
+                'attributes' => $attributes,
+                'variations' => $variations,
+                'variants' => $variations,
+                'sizes' => $findAttributeValues('size'),
+                'colors' => $findAttributeValues('color'),
                 'panel_product_id' => $item['id'] ?? null,
-                'panel_variant_id' => $variant['id'] ?? null,
+                'panel_variant_id' => data_get($variant, 'id'),
                 'panel_seller_product_id' => data_get($item, 'sellerProduct.id'),
                 'related_products' => [],
             ],
@@ -401,29 +533,43 @@ class ExternalProxyController extends Controller
     {
         if ($error = $this->ensureConfigured()) return $error;
 
+        $query = $this->sellerScopeQuery();
+        $districtId = $request->query('districtId', $request->query('district_id', $request->query('district')));
+        if ($districtId !== null && $districtId !== '') {
+            $query['districtId'] = $districtId;
+        }
+
         $response = $this->http()->get(
             $this->baseUrl() . '/api/v1/product/public/shipping-charge',
-            $this->sellerScopeQuery()
+            $query
         );
         if (!$response->successful()) {
             return $this->externalError($response);
         }
 
         $row = $response->json('data') ?? [];
-        $amount = (float) data_get($row, 'amount', 0);
-        $name = trim((string) data_get($row, 'name', 'Delivery Charge'));
+        $zones = data_get($row, 'zones', []);
+        if (!is_array($zones) || count($zones) === 0) {
+            $zones = [$row];
+        }
 
         return response()->json([
             'success' => true,
-            'data' => [
-                [
-                    'id' => data_get($row, 'id', 1),
+            'data' => array_values(array_map(function ($zone) {
+                $name = trim((string) data_get($zone, 'name', data_get($zone, 'zoneName', 'Delivery Charge')));
+                return [
+                    'id' => data_get($zone, 'id', 1),
+                    'zone_name' => data_get($zone, 'zoneName', data_get($zone, 'zone_name')),
+                    'zone_slug' => data_get($zone, 'zoneSlug', data_get($zone, 'zone_slug')),
                     'name' => $name !== '' ? $name : 'Delivery Charge',
-                    'amount' => $amount,
-                ],
-            ],
+                    'amount' => (float) data_get($zone, 'amount', 0),
+                    'district_mode' => data_get($zone, 'districtMode', data_get($zone, 'district_mode', 'all')),
+                    'district_ids' => data_get($zone, 'districtIds', data_get($zone, 'district_ids', [])),
+                ];
+            }, $zones)),
             'meta' => [
                 'source' => 'external_seller_shipping_charge',
+                'district_id' => $districtId,
             ],
         ]);
     }

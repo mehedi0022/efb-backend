@@ -40,6 +40,13 @@ class OrderController extends Controller
      */
     private array $dropshippingProductSkuCache = [];
 
+    /**
+     * Cache resolved panel mappings while processing dropshipping payloads.
+     *
+     * @var array<string, array<string, int|null>>
+     */
+    private array $dropshippingPanelMappingCache = [];
+
     private const PATHAO_DEFAULT_BASE_URL = 'https://api-hermes.pathao.com';
     private const PATHAO_ISSUE_TOKEN_PATH = '/aladdin/api/v1/issue-token';
     private const PATHAO_CREATE_ORDER_PATH = '/aladdin/api/v1/orders';
@@ -372,7 +379,7 @@ class OrderController extends Controller
             $order = Order::with([
                 'customer:id,name,phone,address',
                 'status:id,name,slug',
-                'orderdetails:id,order_id,product_name,qty,sale_price,image',
+                'orderdetails:id,order_id,product_id,external_product_id,panel_product_id,panel_variant_id,panel_seller_product_id,product_sku,product_name,qty,sale_price,purchase_price,image',
                 'shipping:id,order_id,name,phone,address,area,ip_address',
                 'user:id,name',
             ])
@@ -443,6 +450,7 @@ class OrderController extends Controller
             'shipping_phone' => 'required|string|max:55',
             'shipping_email' => 'nullable|email|max:55',
             'shipping_address' => 'required|string|max:256',
+            'district' => 'nullable|integer|min:1',
             'shipping_area' => 'nullable|string|max:100',
             'shipping_charge_id' => 'nullable|integer|exists:shipping_charges,id',
             'shipping_charge' => 'nullable|integer|min:0',
@@ -455,6 +463,9 @@ class OrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
             'items.*.external_product_id' => 'nullable|string|max:255',
+            'items.*.panel_product_id' => 'nullable|integer|min:1',
+            'items.*.panel_variant_id' => 'nullable|integer|min:1',
+            'items.*.panel_seller_product_id' => 'nullable|integer|min:1',
             'items.*.product_sku' => 'nullable|string|max:255',
             'items.*.sku' => 'nullable|string|max:255',
             'items.*.product_name' => 'required|string|max:255',
@@ -547,6 +558,9 @@ class OrderController extends Controller
                     'discount_value' => $discountValue,
                     'shipping_charge' => $shippingCharge,
                     'customer_id' => (int) $customer->id,
+                    'district' => isset($validated['district']) && $validated['district'] !== null
+                        ? (int) $validated['district']
+                        : null,
                     'order_status' => (string) $resolvedStatusId,
                     'note' => $validated['note'] ?? null,
                     'admin_note' => $validated['admin_note'] ?? null,
@@ -593,7 +607,7 @@ class OrderController extends Controller
                     'status:id,name,slug',
                     'shipping:id,order_id,name,phone,address,area,ip_address',
                     'user:id,name',
-                    'orderdetails:id,order_id,image,product_name,qty,sale_price',
+                    'orderdetails:id,order_id,product_id,external_product_id,panel_product_id,panel_variant_id,panel_seller_product_id,product_sku,image,product_name,qty,sale_price,purchase_price',
                 ])->findOrFail($order->id);
 
                 return response()->json([
@@ -625,6 +639,7 @@ class OrderController extends Controller
             'shipping_name' => 'required|string|max:155',
             'shipping_phone' => 'required|string|max:55',
             'shipping_address' => 'required|string|max:256',
+            'district' => 'nullable|integer|min:1',
             'shipping_area' => 'nullable|string|max:100',
             'shipping_charge_id' => 'nullable|integer|exists:shipping_charges,id',
             'shipping_charge' => 'nullable|integer|min:0',
@@ -638,6 +653,9 @@ class OrderController extends Controller
             'items.*.id' => 'nullable|integer',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
             'items.*.external_product_id' => 'nullable|string|max:255',
+            'items.*.panel_product_id' => 'nullable|integer|min:1',
+            'items.*.panel_variant_id' => 'nullable|integer|min:1',
+            'items.*.panel_seller_product_id' => 'nullable|integer|min:1',
             'items.*.product_sku' => 'nullable|string|max:255',
             'items.*.sku' => 'nullable|string|max:255',
             'items.*.product_name' => 'nullable|string|max:255',
@@ -729,6 +747,9 @@ class OrderController extends Controller
             } elseif ($selectedShippingCharge) {
                 $order->shipping_charge = (int) $selectedShippingCharge->amount;
             }
+            if (array_key_exists('district', $validated)) {
+                $order->district = $validated['district'] !== null ? (int) $validated['district'] : null;
+            }
             if (array_key_exists('note', $validated)) {
                 $order->note = $validated['note'];
             }
@@ -774,7 +795,7 @@ class OrderController extends Controller
                 'status:id,name,slug',
                 'shipping:id,order_id,name,phone,address,area,ip_address',
                 'user:id,name',
-                'orderdetails:id,order_id,image,product_name,qty,sale_price',
+                'orderdetails:id,order_id,product_id,external_product_id,panel_product_id,panel_variant_id,panel_seller_product_id,product_sku,image,product_name,qty,sale_price,purchase_price',
             ])->findOrFail($order->id);
 
             return response()->json([
@@ -971,15 +992,25 @@ class OrderController extends Controller
 
             $payload = $this->buildDropshippingPayload($order, $sellerCode, $userDomain);
             $itemErrors = $payload['item_errors'] ?? [];
+            $shippingErrors = $payload['shipping_errors'] ?? [];
             unset($payload['item_errors']);
+            unset($payload['shipping_errors']);
 
-            if (!empty($itemErrors)) {
-                $failedMessage = $itemErrors[0];
+            $validationErrors = array_values(array_unique(array_merge($shippingErrors, $itemErrors)));
+            if (!empty($validationErrors)) {
+                $failedMessage = $validationErrors[0];
+                Log::warning('Dropshipping order failed pre-send validation.', [
+                    'order_id' => (int) $order->id,
+                    'invoice_id' => $order->invoice_id,
+                    'shipping_errors' => $shippingErrors,
+                    'item_errors' => $itemErrors,
+                ]);
                 $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
                 $failedOrders[] = [
                     'order_id' => (int) $order->id,
                     'invoice_id' => $order->invoice_id,
                     'message' => $failedMessage,
+                    'errors' => $validationErrors,
                 ];
                 continue;
             }
@@ -1049,20 +1080,39 @@ class OrderController extends Controller
             if (!is_string($failedMessage) || trim($failedMessage) === '') {
                 $failedMessage = trim((string) $response->body()) ?: 'Dropshipping request failed.';
             }
+            $upstreamErrors = $response->json('errors');
+            Log::error('Dropshipping API rejected order.', [
+                'order_id' => (int) $order->id,
+                'invoice_id' => $order->invoice_id,
+                'endpoint' => $endpoint,
+                'status' => $response->status(),
+                'message' => $failedMessage,
+                'errors' => $upstreamErrors,
+                'response' => $response->json() ?? $response->body(),
+            ]);
             $this->recordCourierDispatch($order, 'steadfast', 'failed', null, $failedMessage);
 
             $failedOrders[] = [
                 'order_id' => (int) $order->id,
                 'invoice_id' => $order->invoice_id,
                 'message' => $failedMessage,
+                'upstream_status' => $response->status(),
+                'upstream_errors' => $upstreamErrors,
             ];
         }
 
         if (!empty($failedOrders)) {
+            $failureCount = count($failedOrders);
+            $sentCount = count($sentOrders);
+            $message = $failedOrders[0]['message'] ?? 'Failed to send order(s) to dropshipping.';
+            if ($failureCount > 1 || $sentCount > 0) {
+                $message = "{$sentCount} order(s) sent, {$failureCount} order(s) failed. First error: {$message}";
+            }
+
             return response()->json([
                 'success' => false,
                 'status' => 'failed',
-                'message' => $failedOrders[0]['message'] ?? 'Failed to send order(s) to dropshipping.',
+                'message' => $message,
                 'sent_orders' => $sentOrders,
                 'failed_orders' => $failedOrders,
             ], 422);
@@ -1862,16 +1912,19 @@ class OrderController extends Controller
         $itemErrors = [];
 
         $items = $order->orderdetails
-            ->map(function ($detail) use (&$itemErrors) {
-                $mappedItem = $this->mapDropshippingOrderItem($detail);
+            ->map(function ($detail) use (&$itemErrors, $sellerCode, $userDomain) {
+                $mappedItem = $this->mapDropshippingOrderItem($detail, $sellerCode, $userDomain);
                 if ($mappedItem === null) {
                     $detailId = isset($detail->id) && is_numeric($detail->id)
                         ? (int) $detail->id
                         : null;
 
+                    $productName = trim((string) ($detail->product_name ?? 'Unknown product'));
+                    $productSku = trim((string) ($detail->product_sku ?? ''));
+                    $skuText = $productSku !== '' ? " SKU: {$productSku}." : ' SKU is missing.';
                     $itemErrors[] = $detailId
-                        ? "Missing panel_product_id or panel_variant_id for order item #{$detailId}."
-                        : 'Missing panel product/variant mapping for one or more order items.';
+                        ? "Order item #{$detailId} ({$productName}) cannot be sent because panel_product_id or panel_variant_id is missing.{$skuText} Re-select this external product/variation or save the panel mapping before sending."
+                        : "One order item cannot be sent because panel_product_id or panel_variant_id is missing.{$skuText} Re-select the external product/variation or save the panel mapping before sending.";
                 }
 
                 return $mappedItem;
@@ -1909,7 +1962,88 @@ class OrderController extends Controller
             $payload['item_errors'] = array_values(array_unique($itemErrors));
         }
 
+        $shippingErrors = $this->validateDropshippingShippingCharge($order, $sellerCode, $userDomain);
+        if (!empty($shippingErrors)) {
+            $payload['shipping_errors'] = $shippingErrors;
+        }
+
         return $payload;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function validateDropshippingShippingCharge(Order $order, string $sellerCode, string $userDomain): array
+    {
+        $shippingArea = trim((string) ($order->shipping?->area ?? ''));
+        $districtId = is_numeric($order->district ?? null) ? (int) $order->district : null;
+        $currentCharge = max(0, (int) round((float) ($order->shipping_charge ?? 0)));
+
+        if ($shippingArea === '') {
+            return ['Delivery area is missing. Edit the order and select a valid FB shipping zone before sending.'];
+        }
+
+        if (!$districtId || $districtId <= 0) {
+            return ['Customer district is missing. Edit the order and select a district before sending to FB.'];
+        }
+
+        $baseUrl = rtrim((string) config('services.api.base_url', ''), '/');
+        if ($baseUrl === '') {
+            return ['External shipping API is not configured. Set API_BASE_URL before sending to FB.'];
+        }
+
+        try {
+            $response = Http::timeout((int) config('services.api.timeout', 20))
+                ->connectTimeout((int) config('services.api.connect_timeout', 5))
+                ->acceptJson()
+                ->get($baseUrl . '/api/v1/product/public/shipping-charge', [
+                    'sellerCode' => $sellerCode,
+                    'userDomain' => $userDomain,
+                    'districtId' => $districtId,
+                ]);
+        } catch (Throwable $exception) {
+            Log::warning('Unable to validate dropshipping shipping charge.', [
+                'order_id' => (int) $order->id,
+                'invoice_id' => $order->invoice_id,
+                'message' => $exception->getMessage(),
+            ]);
+            return ['Unable to validate FB delivery charge right now. Try again later.'];
+        }
+
+        if (!$response->successful()) {
+            return ['Unable to validate FB delivery charge. External shipping API rejected the request.'];
+        }
+
+        $zones = data_get($response->json(), 'data.zones', []);
+        if (!is_array($zones) || count($zones) === 0) {
+            $row = data_get($response->json(), 'data', []);
+            $zones = is_array($row) ? [$row] : [];
+        }
+
+        $normalizedArea = Str::lower($shippingArea);
+        foreach ($zones as $zone) {
+            $zoneName = trim((string) data_get($zone, 'name', data_get($zone, 'zoneName', '')));
+            $zoneSlug = trim((string) data_get($zone, 'zoneSlug', data_get($zone, 'zone_slug', '')));
+            $zoneAmount = max(0, (int) round((float) data_get($zone, 'amount', 0)));
+
+            $matchesName = $zoneName !== '' && Str::lower($zoneName) === $normalizedArea;
+            $matchesSlug = $zoneSlug !== '' && Str::lower($zoneSlug) === $normalizedArea;
+            if (!$matchesName && !$matchesSlug) {
+                continue;
+            }
+
+            if ($zoneAmount !== $currentCharge) {
+                return [
+                    "FB delivery charge mismatch for {$zoneName}. Expected {$zoneAmount}, current {$currentCharge}. Edit the order shipping charge before sending.",
+                ];
+            }
+
+            return [];
+        }
+
+        return [
+            "Selected delivery area '{$shippingArea}' is not valid for this customer's district. Edit the order and choose a valid FB shipping zone.",
+        ];
     }
 
     private function getSellerCode(Request $request): ?string
@@ -1942,12 +2076,21 @@ class OrderController extends Controller
         }
 
         if (is_numeric($district) && Schema::hasTable('districts')) {
+            $nameColumn = Schema::hasColumn('districts', 'name')
+                ? 'name'
+                : (Schema::hasColumn('districts', 'district') ? 'district' : null);
+
+            if ($nameColumn === null) {
+                return trim((string) $district);
+            }
+
             $districtRecord = District::query()
-                ->select('name')
+                ->select($nameColumn)
                 ->find((int) $district);
 
-            if ($districtRecord && is_string($districtRecord->name) && trim($districtRecord->name) !== '') {
-                return trim($districtRecord->name);
+            $districtName = $districtRecord ? trim((string) ($districtRecord->{$nameColumn} ?? '')) : '';
+            if ($districtName !== '') {
+                return $districtName;
             }
         }
 
@@ -1957,7 +2100,7 @@ class OrderController extends Controller
     /**
      * @return array<string, mixed>|null
      */
-    private function mapDropshippingOrderItem(mixed $detail): ?array
+    private function mapDropshippingOrderItem(mixed $detail, string $sellerCode = '', string $userDomain = ''): ?array
     {
         if (!$detail) {
             return null;
@@ -1973,7 +2116,27 @@ class OrderController extends Controller
             : null;
 
         if (!$productId || !$variantId) {
-            return null;
+            $resolved = $this->resolvePanelMappingForOrderDetail($detail, $sellerCode, $userDomain);
+            $productId = $productId ?: ($resolved['productId'] ?? null);
+            $variantId = $variantId ?: ($resolved['variantId'] ?? null);
+            $sellerProductId = $sellerProductId ?: ($resolved['sellerProductId'] ?? null);
+
+            if ($productId && $variantId && isset($detail->id)) {
+                $updates = [
+                    'panel_product_id' => $productId,
+                    'panel_variant_id' => $variantId,
+                ];
+                if ($sellerProductId) {
+                    $updates['panel_seller_product_id'] = $sellerProductId;
+                }
+                OrderDetails::query()
+                    ->where('id', (int) $detail->id)
+                    ->update($updates);
+            }
+
+            if (!$productId || !$variantId) {
+                return null;
+            }
         }
 
         $payload = [
@@ -1986,6 +2149,153 @@ class OrderController extends Controller
             $payload['sellerProductId'] = $sellerProductId;
         }
         return $payload;
+    }
+
+    /**
+     * @return array{productId:int|null,variantId:int|null,sellerProductId:int|null}
+     */
+    private function resolvePanelMappingForOrderDetail(mixed $detail, string $sellerCode, string $userDomain): array
+    {
+        $cacheKey = implode('|', [
+            trim((string) ($detail->id ?? '')),
+            trim((string) ($detail->product_sku ?? '')),
+            trim((string) ($detail->product_name ?? '')),
+            trim((string) ($detail->product_id ?? '')),
+        ]);
+
+        if (isset($this->dropshippingPanelMappingCache[$cacheKey])) {
+            return $this->dropshippingPanelMappingCache[$cacheKey];
+        }
+
+        $empty = ['productId' => null, 'variantId' => null, 'sellerProductId' => null];
+
+        $baseUrl = rtrim((string) (config('services.panel.base_url') ?: config('services.api.base_url')), '/');
+        if ($baseUrl === '' || trim($sellerCode) === '' || trim($userDomain) === '') {
+            Log::warning('Cannot resolve dropshipping panel mapping because panel config is incomplete.', [
+                'order_detail_id' => $detail->id ?? null,
+                'has_base_url' => $baseUrl !== '',
+                'has_seller_code' => trim($sellerCode) !== '',
+                'has_user_domain' => trim($userDomain) !== '',
+            ]);
+            return $this->dropshippingPanelMappingCache[$cacheKey] = $empty;
+        }
+
+        $sku = trim((string) ($detail->product_sku ?? ''));
+        $name = trim((string) ($detail->product_name ?? ''));
+        $searchTerms = array_values(array_unique(array_filter([$sku, $name])));
+
+        foreach ($searchTerms as $term) {
+            $resolved = $this->resolvePanelMappingFromProductSearch(
+                $baseUrl,
+                $sellerCode,
+                $userDomain,
+                $term,
+                $sku,
+                $name
+            );
+
+            if (($resolved['productId'] ?? null) && ($resolved['variantId'] ?? null)) {
+                return $this->dropshippingPanelMappingCache[$cacheKey] = $resolved;
+            }
+        }
+
+        return $this->dropshippingPanelMappingCache[$cacheKey] = $empty;
+    }
+
+    /**
+     * @return array{productId:int|null,variantId:int|null,sellerProductId:int|null}
+     */
+    private function resolvePanelMappingFromProductSearch(
+        string $baseUrl,
+        string $sellerCode,
+        string $userDomain,
+        string $search,
+        string $sku,
+        string $name
+    ): array {
+        $empty = ['productId' => null, 'variantId' => null, 'sellerProductId' => null];
+
+        try {
+            $response = Http::timeout(10)
+                ->connectTimeout(3)
+                ->acceptJson()
+                ->get($baseUrl . '/api/v1/product/public', [
+                    'sellerCode' => $sellerCode,
+                    'userDomain' => $userDomain,
+                    'search' => $search,
+                    'page' => 1,
+                    'limit' => 50,
+                ]);
+        } catch (Throwable $exception) {
+            Log::error('Panel mapping lookup request failed.', [
+                'endpoint' => $baseUrl . '/api/v1/product/public',
+                'search' => $search,
+                'message' => $exception->getMessage(),
+            ]);
+            return $empty;
+        }
+
+        if (!$response->successful()) {
+            Log::warning('Panel mapping lookup API returned an error.', [
+                'endpoint' => $baseUrl . '/api/v1/product/public',
+                'search' => $search,
+                'status' => $response->status(),
+                'response' => $response->json() ?? $response->body(),
+            ]);
+            return $empty;
+        }
+
+        $rows = $response->json('data') ?? [];
+        if (!is_array($rows)) {
+            return $empty;
+        }
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $productId = $this->toPositiveInt($row['id'] ?? null);
+            $sellerProductId = $this->toPositiveInt(data_get($row, 'sellerProduct.id'));
+            $variants = (array) ($row['variations'] ?? $row['variants'] ?? []);
+
+            $matchedVariant = null;
+            if ($sku !== '') {
+                $matchedVariant = collect($variants)->first(
+                    fn($variant) => strcasecmp(trim((string) data_get($variant, 'sku', '')), $sku) === 0
+                );
+            }
+
+            if (!$matchedVariant && $name !== '') {
+                $rowName = trim((string) ($row['name'] ?? data_get($row, 'product_info.name', '')));
+                if ($rowName !== '' && strcasecmp($rowName, $name) === 0) {
+                    $validVariants = collect($variants)
+                        ->filter(fn($variant) => $this->toPositiveInt(data_get($variant, 'id')) !== null)
+                        ->values();
+                    if ($validVariants->count() === 1) {
+                        $matchedVariant = $validVariants->first();
+                    }
+                }
+            }
+
+            $variantId = $this->toPositiveInt(data_get($matchedVariant, 'id'));
+            if ($productId && $variantId) {
+                return [
+                    'productId' => $productId,
+                    'variantId' => $variantId,
+                    'sellerProductId' => $sellerProductId,
+                ];
+            }
+        }
+
+        Log::warning('Panel mapping lookup did not find a matching product variation.', [
+            'search' => $search,
+            'sku' => $sku,
+            'product_name' => $name,
+            'result_count' => count($rows),
+        ]);
+
+        return $empty;
     }
 
     private function resolveDropshippingProductSku(mixed $detail): string
@@ -2339,6 +2649,23 @@ class OrderController extends Controller
 
             $detail->order_id = (int) $order->id;
             $detail->product_id = $productId > 0 ? $productId : 0;
+            $incomingSku = trim((string) ($item['product_sku'] ?? $item['sku'] ?? ''));
+            $incomingExternalProductId = trim((string) ($item['external_product_id'] ?? ''));
+            if ($incomingExternalProductId === '' && Str::startsWith(Str::upper($incomingSku), 'FB')) {
+                $incomingExternalProductId = $incomingSku;
+            }
+            if (array_key_exists('external_product_id', $item) || $incomingExternalProductId !== '') {
+                $detail->external_product_id = $incomingExternalProductId !== '' ? $incomingExternalProductId : null;
+            }
+            if (array_key_exists('panel_product_id', $item)) {
+                $detail->panel_product_id = $this->toPositiveInt($item['panel_product_id'] ?? null);
+            }
+            if (array_key_exists('panel_variant_id', $item)) {
+                $detail->panel_variant_id = $this->toPositiveInt($item['panel_variant_id'] ?? null);
+            }
+            if (array_key_exists('panel_seller_product_id', $item)) {
+                $detail->panel_seller_product_id = $this->toPositiveInt($item['panel_seller_product_id'] ?? null);
+            }
             $detail->product_name = trim((string) (
                 $item['product_name']
                 ?? $product?->name
@@ -3942,6 +4269,16 @@ class OrderController extends Controller
         return (int) $items->sum(function ($item) {
             return ((int) $item->sale_price) * ((int) $item->qty);
         });
+    }
+
+    private function toPositiveInt(mixed $value): ?int
+    {
+        if (!is_numeric($value)) {
+            return null;
+        }
+
+        $number = (int) $value;
+        return $number > 0 ? $number : null;
     }
 
     /**

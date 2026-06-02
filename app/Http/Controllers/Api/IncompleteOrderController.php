@@ -21,7 +21,7 @@ class IncompleteOrderController extends Controller
             'phone' => 'required|string|max:20|min:3',
             'name' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:255',
-            'area' => 'nullable|integer|exists:shipping_charges,id',
+            'area' => 'nullable|integer',
             'district' => 'nullable|string|max:255',
             'cart_id' => 'nullable|string|max:64',
             'status' => 'nullable|string|max:255',
